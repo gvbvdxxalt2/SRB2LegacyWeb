@@ -282,7 +282,35 @@ else()
 endif()
 
 if(${CMAKE_SYSTEM} MATCHES Emscripten)
-	add_subdirectory(web)
+	# Apperantly I should of checked if they had their own web version.
+	# Welp, I still kinda like my launcher anyways since it's fancy.
+	## add_subdirectory(web)
+
+	target_link_options(SRB2SDL2 PRIVATE
+	--use-port=sdl2
+	--use-port=sdl2_mixer
+	--use-port=zlib
+	--use-port=libpng
+	"-s USE_SDL=2"
+    "-lidbfs.js"
+    "-s EXPORTED_RUNTIME_METHODS=['callMain','FS','ccall','cwrap','IDBFS','HEAPU8','wasmMemory']"
+    "-s EXPORTED_FUNCTIONS=['_main','_free','_malloc']"
+	"-s USE_SDL_MIXER=2"
+	"-s SDL2_MIXER_FORMATS=['ogg','wav']"
+
+    # 1. FIX THE CRASH: Increase Stack Size
+    # The default is 64KB. We need at least 5MB for SRB2's level loader.
+    "-s STACK_SIZE=5242880"
+
+    # 2. FIX THE NETWORK: Link your JS Library
+    # You must point this to the .js file that contains your 'mergeInto(LibraryManager.library, ...)' code.
+    # CHECK THE PATH BELOW: It is likely in 'src/sdl/srb2_web.js' or similar.
+    "--js-library=${CMAKE_SOURCE_DIR}/src/sdl/i_net_web.js"
+	"--js-library=${CMAKE_SOURCE_DIR}/src/sdl/emscripten_serverinfo.js"
+)
+target_compile_definitions(SRB2SDL2 PRIVATE -DHAVE_SDL -DSOUND=2 -DHAVE_MIXER -DSOUND=SOUND_MIXER)
+target_compile_definitions(SRB2SDL2 PRIVATE -DDIRECTFULLSCREEN -DHAVE_SDL -DHAVE_PNG)
+target_compile_options(SRB2SDL2 PRIVATE --use-port=sdl2 --use-port=sdl2_mixer --use-port=zlib --use-port=libpng)
 endif()
 
 if(${CMAKE_SYSTEM} MATCHES "Windows") 

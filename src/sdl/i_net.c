@@ -8,358 +8,725 @@
 // modify it under the terms of the GNU General Public License
 // as published by the Free Software Foundation; either version 2
 // of the License, or (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
 //-----------------------------------------------------------------------------
-/// \file
-/// \brief SDL network interface
+
 
 #include "../doomdef.h"
-
 #include "../i_system.h"
 #include "../d_event.h"
 #include "../d_net.h"
 #include "../m_argv.h"
-
 #include "../doomstat.h"
-
 #include "../i_net.h"
-
+#include <string.h>   // ADD THIS
 #include "../z_zone.h"
-
 #include "../i_tcp.h"
+#include "../d_netcmd.h"
+#include "../d_net.h"
+#include "../d_clisrv.h"
+#include "../g_game.h"
+#include "../z_zone.h"
 
 #ifdef HAVE_SDL
 
+// =========================================================================
+// EMSCRIPTEN / WEBSOCKET DEFINITIONS
+// =========================================================================
+#ifdef EMSCRIPTEN
+#include <emscripten.h>
+#include <stdio.h> 
+
+#define MAX_QUEUED_PACKETS 7000
+#define MAX_PACKET_SIZE 7000
+
+typedef struct {
+    unsigned char data[MAX_PACKET_SIZE];
+    int length;
+    int from_node_id; 
+    char from_ip[64]; 
+} ws_packet_t;
+
+static volatile ws_packet_t packet_queue[MAX_QUEUED_PACKETS];
+static volatile int queue_head = 0;
+static volatile int queue_tail = 0;
+
+static int NextIndex(int index) { return (index + 1) % MAX_QUEUED_PACKETS; }
+
+static unsigned int StringToAddr(const char* ip) {
+    unsigned int a, b, c, d;
+    if (!ip || !*ip) return 0;
+    if (sscanf(ip, "%u.%u.%u.%u", &a, &b, &c, &d) != 4) return 0;
+    return (a << 24) | (b << 16) | (c << 8) | d;
+}
+
+// -------------------------------------------------------------------------
+// EXPORTED FUNCTION: JS CALLS THIS
+// -------------------------------------------------------------------------
+EMSCRIPTEN_KEEPALIVE
+void SRB2_NetworkReceive(char *data, int length, int from_id, char *from_ip) {
+    int next_head = NextIndex(queue_head);
+    if (next_head == queue_tail) return; 
+
+    if (length > MAX_PACKET_SIZE) length = MAX_PACKET_SIZE;
+    
+    memcpy((void*)packet_queue[queue_head].data, data, length);
+    packet_queue[queue_head].length = length;
+    packet_queue[queue_head].from_node_id = from_id;
+    
+    if (from_ip) {
+        strncpy((char*)packet_queue[queue_head].from_ip, from_ip, 63);
+        packet_queue[queue_head].from_ip[63] = '\0';
+    } else {
+        packet_queue[queue_head].from_ip[0] = '\0';
+    }
+    
+    queue_head = next_head;
+}
+
+extern void SRB2_NetworkSend(int node_id, void* data, int length);
+extern int SRB2_ListenOn(int port);
+extern int SRB2_CloseSocket(void);
+extern int SRB2_GetPort(void);
+extern int SRB2_InitNetwork(void);
+extern int SRB2_ConnectTo(const char* addr, char* port);
+
+#endif
+
 #ifdef HAVE_SDLNET
 
+#ifdef EMSCRIPTEN
+
+typedef void* UDPsocket;
+typedef void* SDLNet_SocketSet;
+
+#define INADDR_BROADCAST 0xFFFFFFFF
+#define MAXPACKETLENGTH 6000
+#define SOCK_PORT 5029
+#else
 #include "SDL_net.h"
+#endif
 
-#define MAXBANS 20
+#define MAXBANS 30
 
+static boolean nodeconnected[MAXNETNODES+1];
+static UINT16 sock_port = 5029;
+extern INT32 net_bandwidth;
 static IPaddress clientaddress[MAXNETNODES+1];
-static IPaddress banned[MAXBANS];
-
+static bannednode_t_ banned[MAXBANS];
 static UDPpacket mypacket;
 static UDPsocket mysocket = NULL;
 static SDLNet_SocketSet myset = NULL;
-
 static size_t numbans = 0;
-static boolean NET_bannednode[MAXNETNODES+1]; /// \note do we really need the +1?
+static boolean NET_bannednode[MAXNETNODES+1];
 static boolean init_SDLNet_driver = false;
+
+// -------------------------------------------------------------------------
+// Helper Functions
+// -------------------------------------------------------------------------
 
 static const char *NET_AddrToStr(IPaddress* sk)
 {
-	static char s[22]; // 255.255.255.255:65535
-	strcpy(s, SDLNet_ResolveIP(sk));
-	if (sk->port != 0) strcat(s, va(":%d", sk->port));
-	return s;
+#ifdef EMSCRIPTEN
+    if (sk->ip[0]) return sk->ip;
+    static char s[32];
+    sprintf(s, "RelayID-%u", sk->relayid);
+    return s;
+#else
+    static char s[22];
+    strcpy(s, SDLNet_ResolveIP(sk));
+    if (sk->port != 0) {
+        char portstr[10];
+        sprintf(portstr, ":%d", sk->port);
+        strcat(s, portstr);
+    }
+    return s;
+#endif
 }
 
 static const char *NET_GetNodeAddress(INT32 node)
 {
-	if (!nodeconnected[node])
-		return NULL;
-	return NET_AddrToStr(&clientaddress[node]);
+    if (!nodeconnected[node]) return NULL;
+    return NET_AddrToStr(&clientaddress[node]);
 }
 
 static const char *NET_GetBanAddress(size_t ban)
 {
-	if (ban > numbans)
-		return NULL;
-	return NET_AddrToStr(&banned[ban]);
+    if (ban >= numbans) return NULL;
+    
+    // Explicitly return IP string instead of formatting RelayID
+    if (banned[ban].address.ip[0] != '\0') {
+        return banned[ban].address.ip;
+    }
+    
+    return NET_AddrToStr(&banned[ban].address);
 }
 
 static boolean NET_cmpaddr(IPaddress* a, IPaddress* b)
 {
-	return (a->host == b->host && (b->port == 0 || a->port == b->port));
+#ifdef EMSCRIPTEN
+    // Primary: Compare by 32-bit numerical IP address
+    if (a->host != 0 && b->host != 0 && a->host == b->host) {
+        return true;
+    }
+
+    // Secondary: Compare string representations if host wasn't parsed yet
+    if (a->ip[0] != '\0' && b->ip[0] != '\0' && strcmp(a->ip, b->ip) == 0) {
+        return true;
+    }
+
+    // DO NOT compare relayid here — relay IDs are temporary connection slots!
+    return false;
+#else
+    return (a->host == b->host && a->port == b->port);
+#endif
 }
 
 static boolean NET_CanGet(void)
 {
-	return myset?(SDLNet_CheckSockets(myset,0)  == 1):false;
+#ifdef EMSCRIPTEN
+    return (queue_head != queue_tail);
+#else
+    return myset?(SDLNet_CheckSockets(myset,0)  == 1):false;
+#endif
 }
 
-static void NET_Get(void)
-{
-	INT32 mystatus;
-	INT32 newnode;
-	mypacket.len = MAXPACKETLENGTH;
-	if (!NET_CanGet())
-	{
-		doomcom->remotenode = -1; // no packet
-		return;
-	}
-	mystatus = SDLNet_UDP_Recv(mysocket,&mypacket);
-	if (mystatus != -1)
-	{
-		if (mypacket.channel != -1)
-		{
-			doomcom->remotenode = mypacket.channel+1; // good packet from a game player
-			doomcom->datalength = mypacket.len;
-			return;
-		}
-		newnode = SDLNet_UDP_Bind(mysocket,-1,&mypacket.address);
-		if (newnode != -1)
-		{
-			size_t i;
-			newnode++;
-			M_Memcpy(&clientaddress[newnode], &mypacket.address, sizeof (IPaddress));
-			DEBFILE(va("New node detected: node:%d address:%s\n", newnode,
-					NET_GetNodeAddress(newnode)));
-			doomcom->remotenode = newnode; // good packet from a game player
-			doomcom->datalength = mypacket.len;
-			for (i = 0; i < numbans; i++)
-			{
-				if (NET_cmpaddr(&mypacket.address, &banned[i]))
-				{
-					DEBFILE("This dude has been banned\n");
-					NET_bannednode[newnode] = true;
-					break;
-				}
-			}
-			if (i == numbans)
-				NET_bannednode[newnode] = false;
-			return;
-		}
-		else
-			I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
-	}
-	else if (mystatus == -1)
-	{
-		I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
-	}
+// -----------------------------------------------------------------------
 
-	DEBFILE("New node detected: No more free slots\n");
-	doomcom->remotenode = -1; // no packet
+#ifdef EMSCRIPTEN
+static INT32 NET_WebToNode(INT32 relayid)
+{
+    if (!server) {
+        if (!nodeconnected[1]) {
+            nodeconnected[1] = true;
+            clientaddress[1].relayid = relayid;
+        }
+        return 1; 
+    }
+
+    for (INT32 i = 1; i < MAXNETNODES; i++) {
+        if (nodeconnected[i] && clientaddress[i].relayid == (unsigned int)relayid) return i;
+    }
+
+    INT32 newnode = -1;
+    for (INT32 i = 1; i < MAXNETNODES; i++) {
+        if (!nodeconnected[i]) { newnode = i; break; }
+    }
+
+    if (newnode != -1) {
+        memset(&clientaddress[newnode], 0, sizeof(IPaddress));
+        clientaddress[newnode].relayid = relayid;
+        clientaddress[newnode].host = 0; 
+        
+        nodeconnected[newnode] = true; 
+
+        NET_bannednode[newnode] = false;
+        return newnode;
+    }
+    return -1; 
 }
 
-#if 0
-static boolean NET_CanSend(void)
-{
-	return true;
+extern void CL_RemovePlayer(INT32 playernum, INT32 reason);
+
+EMSCRIPTEN_KEEPALIVE
+void SRB2_NetworkClosed(int relay_id) {
+    if (!server) return; 
+
+    int node = -1;
+    for (INT32 i = 1; i < MAXNETNODES; i++) {
+        if (nodeconnected[i] && clientaddress[i].relayid == (unsigned int)relay_id) {
+            node = i; 
+            break;
+        }
+    }
+
+    if (node == -1) return;
+
+    // 1. Remove all players assigned to this node via net command
+    INT32 p = nodetoplayer[node];
+    if (p >= 0 && playeringame[p]) {
+        UINT8 buf[2];
+        buf[0] = (UINT8)p;
+        buf[1] = (UINT8)KR_LEAVE;
+        SendNetXCmd(XD_KICK, buf, 2);
+    }
+
+    // Check for splitscreen secondary players on the same node
+    p = nodetoplayer2[node];
+    if (p >= 0 && playeringame[p]) {
+        UINT8 buf[2];
+        buf[0] = (UINT8)p;
+        buf[1] = (UINT8)KR_LEAVE;
+        SendNetXCmd(XD_KICK, buf, 2);
+    }
+
+    // 2. Clear network-level node state so it can be reused by new connections
+    nodeconnected[node] = false;
+    nodeingame[node] = false;
+    memset(&clientaddress[node], 0, sizeof(IPaddress));
+
+    NET_bannednode[node] = false;
 }
 #endif
 
+// -----------------------------------------------------------------------
+// NET_Get: IP SAFETY LOCK & SILENT BAN CHECK
+// -----------------------------------------------------------------------
+static boolean NET_Get(void)
+{
+#ifdef EMSCRIPTEN
+    if (queue_head == queue_tail) {
+        doomcom->remotenode = -1;
+        return false;
+    }
+
+    int tail = queue_tail;
+    ws_packet_t *pkt = (ws_packet_t*)&packet_queue[tail];
+    INT32 node = NET_WebToNode(pkt->from_node_id);
+
+    if (!server) {
+        node = 1; //Server is ALWAYS 1 when client connecting.
+    }
+
+    if (node != -1)
+    {
+        // =========================================================
+        // FIX: IP SAFETY LOCK
+        // Only update the IP if the packet contains a valid non-empty string.
+        // This prevents the "RelayID-0" ban bug and the rejoin corruption.
+        // =========================================================
+        if (pkt->from_ip[0] != '\0') {
+            
+            unsigned int new_host = StringToAddr((char*)pkt->from_ip);
+
+            if (new_host != 0) {
+                // If this is a new IP for this node, update it.
+                if (clientaddress[node].host != new_host) {
+                     char logbuf[256];
+                     strncpy(clientaddress[node].ip, (char*)pkt->from_ip, 63);
+                     clientaddress[node].ip[63] = '\0';
+                     clientaddress[node].host = new_host;
+
+                     sprintf(logbuf, "Node %d IP Update: %s", node, clientaddress[node].ip);
+                     //CONS_Printf("%s", logbuf);
+                }
+            }
+        }
+        // =========================================================
+
+        // Check Ban on every packet silently
+        // Check Ban on every packet silently (Ignore node 0 / local loopback)
+        if (node > 0) {
+            for (size_t i = 0; i < numbans; i++) {
+                if (banned[i].address.host != 0 && NET_cmpaddr(&clientaddress[node], &banned[i].address)) {
+                    // Ban Match Found - Enforce Kick
+                    NET_bannednode[node] = true;
+                    break;
+                }
+            }
+        }
+
+        mypacket.len = pkt->length;
+        memcpy(mypacket.data, pkt->data, pkt->length);
+        
+        mypacket.address.relayid = pkt->from_node_id;
+        
+        // Always use the stored SAFE IP
+        mypacket.address.host = clientaddress[node].host;
+        strncpy(mypacket.address.ip, clientaddress[node].ip, 63);
+
+        doomcom->remotenode = node;
+        doomcom->datalength = mypacket.len;
+        
+        //CONS_Printf("NET_Get: Forwarding packet of length %d to node %d\n", mypacket.len, node);
+        queue_tail = NextIndex(tail);
+        return true;
+    }
+    
+    queue_tail = NextIndex(tail);
+    doomcom->remotenode = -1;
+    return false;
+#else
+    // Desktop Code
+    if (!NET_CanGet()) {
+        doomcom->remotenode = -1;
+        return false;
+    }
+    if (SDLNet_UDP_Recv(mysocket,&mypacket)) {
+        INT32 i;
+        doomcom->remotenode = -1;
+        for (i=0; i<MAXNETNODES; i++) {
+            if (NET_cmpaddr(&mypacket.address,&clientaddress[i])) {
+                doomcom->remotenode = i;
+                break;
+            }
+        }
+        if (doomcom->remotenode == -1) doomcom->remotenode = MAXNETNODES; 
+        doomcom->datalength = mypacket.len;
+        return true;
+    }
+    return false;
+#endif
+}
+
 static void NET_Send(void)
 {
-	if (!doomcom->remotenode)
-		return;
-	mypacket.len = doomcom->datalength;
-	if (SDLNet_UDP_Send(mysocket,doomcom->remotenode-1,&mypacket) == 0)
-	{
-		I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
-	}
+    if (!doomcom->remotenode) return;
+    mypacket.len = doomcom->datalength;
+    //CONS_Printf("NET_Send: Sending packet of length %d\n", mypacket.len);
+
+#ifdef EMSCRIPTEN
+    // Route local node (0) directly to loopback queue
+    
+    if (doomcom->remotenode < 0 || doomcom->remotenode >= MAXNETNODES) return;
+    int target_relay_id = clientaddress[doomcom->remotenode].relayid;
+    SRB2_NetworkSend(target_relay_id, mypacket.data, mypacket.len);
+#else
+    if (SDLNet_UDP_Send(mysocket,doomcom->remotenode-1,&mypacket) == 0)
+        I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
+#endif
 }
 
 static void NET_FreeNodenum(INT32 numnode)
 {
-	// can't disconnect from self :)
-	if (!numnode)
-		return;
-
-	DEBFILE(va("Free node %d (%s)\n", numnode, NET_GetNodeAddress(numnode)));
-
-	SDLNet_UDP_Unbind(mysocket,numnode-1);
-
-	memset(&clientaddress[numnode], 0, sizeof (IPaddress));
+    if (!numnode) return;
+#ifndef EMSCRIPTEN
+    SDLNet_UDP_Unbind(mysocket,numnode-1);
+#endif
+    memset(&clientaddress[numnode], 0, sizeof (IPaddress));
+    nodeconnected[numnode] = false; 
+    NET_bannednode[numnode] = false;
 }
 
 static UDPsocket NET_Socket(void)
 {
-	UDPsocket temp = NULL;
-	Uint16 portnum = 0;
-	IPaddress tempip = {INADDR_BROADCAST,0};
-	//Hurdler: I'd like to put a server and a client on the same computer
-	//Logan: Me too
-	//BP: in fact for client we can use any free port we want i have read
-	//    in some doc that connect in udp can do it for us...
-	//Alam: where?
-	if (M_CheckParm("-clientport"))
-	{
-		if (!M_IsNextParm())
-			I_Error("syntax: -clientport <portnum>");
-		portnum = atoi(M_GetNextParm());
-	}
-	else
-		portnum = sock_port;
-	temp = SDLNet_UDP_Open(portnum);
-	if (!temp)
-	{
-			I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
-		return NULL;
-	}
-	if (SDLNet_UDP_Bind(temp,BROADCASTADDR-1,&tempip) == -1)
-	{
-		I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
-		SDLNet_UDP_Close(temp);
-		return NULL;
-	}
-	clientaddress[BROADCASTADDR].port = sock_port;
-	clientaddress[BROADCASTADDR].host = INADDR_BROADCAST;
-
-	doomcom->extratics = 1; // internet is very high ping
-
-	return temp;
+#ifdef EMSCRIPTEN
+    static int emscripten_socket_initialized;
+    return (UDPsocket)&emscripten_socket_initialized;
+#else
+    UDPsocket temp = NULL;
+    Uint16 portnum = 0;
+    IPaddress tempip = {INADDR_BROADCAST,0};
+    if (M_CheckParm("-clientport")) {
+        if (!M_IsNextParm()) I_Error("syntax: -clientport <portnum>");
+        portnum = atoi(M_GetNextParm());
+    } else portnum = sock_port;
+    temp = SDLNet_UDP_Open(portnum);
+    if (!temp) return NULL;
+    if (SDLNet_UDP_Bind(temp,BROADCASTADDR-1,&tempip) == -1) {
+        SDLNet_UDP_Close(temp);
+        return NULL;
+    }
+    clientaddress[BROADCASTADDR].port = sock_port;
+    clientaddress[BROADCASTADDR].host = INADDR_BROADCAST;
+    doomcom->extratics = 1; 
+    return temp;
+#endif
 }
 
 static void I_ShutdownSDLNetDriver(void)
 {
-	if (myset) SDLNet_FreeSocketSet(myset);
-	myset = NULL;
-	SDLNet_Quit();
-	init_SDLNet_driver = false;
+#ifndef EMSCRIPTEN
+    if (myset) SDLNet_FreeSocketSet(myset);
+    myset = NULL;
+    SDLNet_Quit();
+#endif
+    init_SDLNet_driver = false;
 }
 
 static void I_InitSDLNetDriver(void)
 {
-	if (init_SDLNet_driver)
-		I_ShutdownSDLNetDriver();
-	if (SDLNet_Init() == -1)
-	{
-		I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
-		return; // No good!
-	}
-	D_SetDoomcom();
-	mypacket.data = doomcom->data;
-	init_SDLNet_driver = true;
+    if (init_SDLNet_driver) I_ShutdownSDLNetDriver();
+#ifndef EMSCRIPTEN
+    if (SDLNet_Init() == -1) return; 
+#endif
+    D_SetDoomcom();
+    mypacket.data = (UINT8 *)doomcom->data;
+    init_SDLNet_driver = true;
 }
 
 static void NET_CloseSocket(void)
 {
-	if (mysocket)
-		SDLNet_UDP_Close(mysocket);
-	mysocket = NULL;
+#ifdef EMSCRIPTEN
+    SRB2_CloseSocket();
+    mysocket = NULL;
+#endif
+#ifndef EMSCRIPTEN
+    if (mysocket) SDLNet_UDP_Close(mysocket);
+#endif
+    mysocket = NULL;
 }
+
+EMSCRIPTEN_KEEPALIVE
+void SRB2_ForceCloseSocket(void) { NET_CloseSocket(); }
 
 static SINT8 NET_NetMakeNodewPort(const char *hostname, const char *port)
 {
-	INT32 newnode;
-	UINT16 portnum = sock_port;
-	IPaddress hostnameIP;
+    INT32 newnode;
+    IPaddress hostnameIP;
 
-	// retrieve portnum from address!
-	if (port && !port[0])
-		portnum = atoi(port);
-
-	if (SDLNet_ResolveHost(&hostnameIP,hostname,portnum) == -1)
-	{
-		I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
-		return -1;
-	}
-	newnode = SDLNet_UDP_Bind(mysocket,-1,&hostnameIP);
-	if (newnode == -1)
-	{
-		I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
-		return newnode;
-	}
-	newnode++;
-	M_Memcpy(&clientaddress[newnode],&hostnameIP,sizeof (IPaddress));
-	return (SINT8)newnode;
+#ifdef EMSCRIPTEN
+    SRB2_ConnectTo(hostname, port);
+    newnode = 1; 
+    hostnameIP.relayid = hostname ? atoi(hostname) : 0;
+    hostnameIP.port = 0;
+    if (hostname) {
+        strncpy(hostnameIP.ip, hostname, 63);
+        hostnameIP.ip[63] = '\0';
+        hostnameIP.host = StringToAddr(hostname);
+    } else {
+        hostnameIP.ip[0] = '\0';
+        hostnameIP.host = 0;
+    }
+    M_Memcpy(&clientaddress[newnode], &hostnameIP, sizeof(IPaddress));
+    nodeconnected[newnode] = true; 
+    NET_bannednode[newnode] = false;
+    return (SINT8)newnode;
+#else
+    UINT16 portnum = sock_port;
+    if (port && !port[0]) portnum = atoi(port);
+    if (SDLNet_ResolveHost(&hostnameIP,hostname,portnum) == -1) return -1;
+    newnode = SDLNet_UDP_Bind(mysocket,-1,&hostnameIP);
+    if (newnode == -1) return newnode;
+    newnode++;
+    M_Memcpy(&clientaddress[newnode],&hostnameIP,sizeof (IPaddress));
+    return (SINT8)newnode;
+#endif
 }
-
 
 static boolean NET_OpenSocket(void)
 {
-	memset(clientaddress, 0, sizeof (clientaddress));
+    memset(clientaddress, 0, sizeof (clientaddress));
+    for(int i=0; i<MAXNETNODES+1; i++) {
+        nodeconnected[i] = false;
+        NET_bannednode[i] = false;
+    }
+    NET_bannednode[0] = false;
 
-	//I_OutputMsg("SDL_Net Code starting up\n");
+    I_NetSend = NET_Send;
+    I_NetGet = NET_Get;
+    I_NetCloseSocket = NET_CloseSocket;
+    I_NetFreeNodenum = NET_FreeNodenum;
+    I_NetMakeNodewPort = NET_NetMakeNodewPort;
 
-	I_NetSend = NET_Send;
-	I_NetGet = NET_Get;
-	I_NetCloseSocket = NET_CloseSocket;
-	I_NetFreeNodenum = NET_FreeNodenum;
-	I_NetMakeNodewPort = NET_NetMakeNodewPort;
+    NET_CloseSocket();
+    mysocket = NET_Socket();
+    //CONS_Printf("NET_OpenSocket: Creating socket on port %d\n", sock_port);
 
-	//I_NetCanSend = NET_CanSend;
+    #ifdef EMSCRIPTEN
+        if (server) SRB2_ListenOn(sock_port);
+        return true;
+    #endif
 
-	// build the socket but close it first
-	NET_CloseSocket();
-	mysocket = NET_Socket();
-
-	if (!mysocket)
-		return false;
-
-	// for select
-	myset = SDLNet_AllocSocketSet(1);
-	if (!myset)
-	{
-		I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
-		return false;
-	}
-	if (SDLNet_UDP_AddSocket(myset,mysocket) == -1)
-	{
-		I_OutputMsg("SDL_Net: %s",SDLNet_GetError());
-		return false;
-	}
-	return true;
+    if (!mysocket) return false;
+#ifndef EMSCRIPTEN
+    myset = SDLNet_AllocSocketSet(1);
+    if (!myset) return false;
+    if (SDLNet_UDP_AddSocket(myset,mysocket) == -1) return false;
+#endif
+    return true;
 }
 
+// -------------------------------------------------------------------------
+// NET_Ban
+// -------------------------------------------------------------------------
 static boolean NET_Ban(INT32 node)
 {
-	if (numbans == MAXBANS)
-		return false;
+    if (numbans >= MAXBANS) return false;
+    if (node < 1 || node >= MAXNETNODES) return false;
 
-	M_Memcpy(&banned[numbans], &clientaddress[node], sizeof (IPaddress));
-	banned[numbans].port = 0;
-	numbans++;
-	return true;
+    // 1. Copy client address struct
+    M_Memcpy(&banned[numbans].address, &clientaddress[node], sizeof(IPaddress));
+    banned[numbans].address.port = 0;
+
+    // 2. If host was missing, compute it from the string
+    if (banned[numbans].address.host == 0 && banned[numbans].address.ip[0] != '\0') {
+        banned[numbans].address.host = StringToAddr(banned[numbans].address.ip);
+    }
+
+    // 3. If ip string was missing, compute it from host
+    if (banned[numbans].address.ip[0] == '\0' && banned[numbans].address.host != 0) {
+        sprintf(banned[numbans].address.ip, "%u.%u.%u.%u",
+            (banned[numbans].address.host >> 24) & 0xFF,
+            (banned[numbans].address.host >> 16) & 0xFF,
+            (banned[numbans].address.host >> 8) & 0xFF,
+            banned[numbans].address.host & 0xFF);
+    }
+
+#ifdef EMSCRIPTEN
+    banned[numbans].reason = Z_StrDup("Manual Ban");
+    banned[numbans].username = Z_StrDup("Unknown");
+    banned[numbans].timestamp = NO_BAN_TIME;
+#endif
+
+    numbans++;
+    return true;
 }
 
 static boolean NET_SetBanAddress(const char *address, const char *mask)
 {
-	(void)mask;
-	if (bans == MAXBANS)
-		return false;
-
-	if (SDLNet_ResolveHost(&banned[numbans], address, 0) == -1)
-		return false;
-	numbans++;
-	return true;
+    (void)mask;
+    if (numbans == MAXBANS) return false;
+#ifdef EMSCRIPTEN
+    strncpy(banned[numbans].address.ip, address, 63);
+    banned[numbans].address.ip[63] = '\0';
+    banned[numbans].address.host = StringToAddr(address); 
+    banned[numbans].address.relayid = 0; 
+    banned[numbans].address.port = 0;
+    
+    // Explicitly initialize pointers to NULL to prevent Z_Free crashes later
+    banned[numbans].reason = NULL; 
+    banned[numbans].username = NULL;
+    banned[numbans].timestamp = NO_BAN_TIME;
+    
+    numbans++;
+    return true;
+#else
+    if (SDLNet_ResolveHost(&banned[numbans], address, 0) == -1) return false;
+    numbans++;
+    return true;
+#endif
 }
 
 static void NET_ClearBans(void)
 {
-	numbans = 0;
+#ifdef EMSCRIPTEN
+    for (size_t i = 0; i < numbans; i++) {
+        if (banned[i].username) {
+            Z_Free(banned[i].username);
+            banned[i].username = NULL;
+        }
+        if (banned[i].reason) {
+            Z_Free(banned[i].reason);
+            banned[i].reason = NULL;
+        }
+    }
+#endif
+    memset(banned, 0, sizeof(banned));
+    numbans = 0;
 }
 #endif
 
-//
-// I_InitNetwork
-// Only required for DOS, so this is more a dummy
-//
+static boolean NET_CanSend(void)
+{
+    return true;
+}
+
+// -------------------------------------------------------------------------
+// BAN SYSTEM FUNCTIONS (Signature-Matched to i_net.h)
+// -------------------------------------------------------------------------
+
+static const char *NET_GetBanMask(size_t ban)
+{
+    static char s[16];
+    if (ban >= numbans)
+        return NULL;
+    
+    // Convert mask value to string or return default host mask
+    snprintf(s, sizeof(s), "%u", 32); 
+    return s;
+}
+
+static const char *NET_GetBanUsername(size_t ban)
+{
+    if (ban >= numbans)
+		return NULL;
+	return banned[ban].username;
+}
+
+static const char *NET_GetBanReason(size_t ban)
+{
+    if (ban >= numbans)
+		return NULL;
+	return banned[ban].reason;
+}
+
+static time_t NET_GetUnbanTime(size_t ban)
+{
+    (void)ban;
+    return NO_BAN_TIME; // Default to permanent unless timed bans are set
+}
+
+static boolean NET_SetBanUsername(const char *username)
+{
+    if (numbans == 0) return false;
+
+    if (username == NULL || strlen(username) == 0)
+	{
+		username = "Direct IP ban";
+	}
+
+	if (banned[numbans - 1].username)
+	{
+		Z_Free(banned[numbans - 1].username);
+		banned[numbans - 1].username = NULL;
+	}
+
+	banned[numbans - 1].username = Z_StrDup(username);
+	return true;
+}
+
+static boolean NET_SetBanReason(const char *reason)
+{
+    // 1. Guard against empty ban list
+    if (numbans == 0)
+        return false;
+
+    // 2. Fallback for null or empty reason string
+    if (reason == NULL || reason[0] == '\0')
+    {
+        reason = "No reason given";
+    }
+
+    // 3. Free previous allocation if present
+    if (banned[numbans - 1].reason != NULL)
+    {
+        Z_Free(banned[numbans - 1].reason);
+        banned[numbans - 1].reason = NULL;
+    }
+
+    // 4. Duplicate string into SRB2 zone memory
+    banned[numbans - 1].reason = Z_StrDup(reason);
+    return true;
+}
+
+static boolean NET_SetUnbanTime(time_t timestamp)
+{
+    if (numbans == 0) return false;
+
+    banned[numbans - 1].timestamp = timestamp;
+	return true;
+}
+
+// -------------------------------------------------------------------------
+// HOLE PUNCHING STUBS (Prevents RenewHolePunch crash in NetUpdate)
+// -------------------------------------------------------------------------
+
+static void NET_RegisterHolePunch(void)
+{
+    // No-op for Emscripten transport layer
+}
+
+static void NET_RequestHolePunch(INT32 node)
+{
+    (void)node;
+}
+
 boolean I_InitNetwork(void)
 {
 #ifdef HAVE_SDLNET
-	char serverhostname[255];
-	boolean ret = false;
-	SDL_version SDLcompiled;
-	const SDL_version *SDLlinked = SDLNet_Linked_Version();
-	SDL_NET_VERSION(&SDLcompiled)
-	I_OutputMsg("Compiled for SDL_Net version: %d.%d.%d\n",
-                        SDLcompiled.major, SDLcompiled.minor, SDLcompiled.patch);
-	I_OutputMsg("Linked with SDL_Net version: %d.%d.%d\n",
-                        SDLlinked->major, SDLlinked->minor, SDLlinked->patch);
-	//if (!M_CheckParm ("-sdlnet"))
-	//	return false;
-	// initilize the driver
-	I_InitSDLNetDriver();
-	I_AddExitFunc(I_ShutdownSDLNetDriver);
-	if (!init_SDLNet_driver)
-		return false;
-
-	if (M_CheckParm("-udpport"))
-	{
-		if (M_IsNextParm())
-			sock_port = (UINT16)atoi(M_GetNextParm());
-		else
-			sock_port = 0;
-	}
-
-	// parse network game options,
+    char serverhostname[255];
+    boolean ret = false;
+    I_InitSDLNetDriver();
+    I_AddExitFunc(I_ShutdownSDLNetDriver);
+    if (!init_SDLNet_driver) return false;
+#ifdef EMSCRIPTEN
+    SRB2_InitNetwork();
+#endif
+    if (M_CheckParm("-udpport")) {
+        if (M_IsNextParm()) sock_port = (UINT16)atoi(M_GetNextParm());
+        else sock_port = 0;
+    }
+    // parse network game options,
 	if (M_CheckParm("-server") || dedicated)
 	{
 		server = true;
@@ -419,24 +786,48 @@ boolean I_InitNetwork(void)
 			hardware_MAXPACKETLENGTH = MAXPACKETLENGTH;
 		}
 	}
+    mypacket.maxlen = hardware_MAXPACKETLENGTH;
+    I_NetCanGet = NET_CanGet;
+    I_NetCanSend = NET_CanSend;
+    I_NetGet = NET_Get;
+    I_NetSend = NET_Send;
+    I_NetFreeNodenum = NET_FreeNodenum;
+    I_NetCloseSocket = NET_CloseSocket;
+    I_NetOpenSocket = NET_OpenSocket;
+    I_NetMakeNodewPort = NET_NetMakeNodewPort;
 
-	mypacket.maxlen = hardware_MAXPACKETLENGTH;
-	I_NetOpenSocket = NET_OpenSocket;
-	I_Ban = NET_Ban;
-	I_ClearBans = NET_ClearBans;
-	I_GetNodeAddress = NET_GetNodeAddress;
-	I_GetBenAddress = NET_GetBenAddress;
-	I_SetBanAddress = NET_SetBanAddress;
-	bannednode = NET_bannednode;
+    // Hole Punching Pointers (Prevents WASM signature mismatch crash)
+    //I_NetRegisterHolePunch = NET_RegisterHolePunch;
+    //I_NetRequestHolePunch = NET_RequestHolePunch;
 
-	return ret;
+    // Address Lookup
+    I_GetNodeAddress = NET_GetNodeAddress;
+    I_GetBanAddress = NET_GetBanAddress;
+
+    // Extended Ban System Interface
+    I_Ban = NET_Ban;
+    I_ClearBans = NET_ClearBans;
+    I_SetBanAddress = NET_SetBanAddress;
+    I_GetBanMask = NET_GetBanMask;
+    //I_GetBanUsername = NET_GetBanUsername;
+    //I_GetBanReason = NET_GetBanReason;
+    //I_GetUnbanTime = NET_GetUnbanTime;
+    //I_SetBanUsername = NET_SetBanUsername;
+    //I_SetBanReason = NET_SetBanReason;
+    //I_SetUnbanTime = NET_SetUnbanTime;
+
+    bannednode = NET_bannednode;
+    return ret;
 #else
-	if ( M_CheckParm ("-net") )
-	{
-		I_Error("-net not supported, use -server and -connect\n"
-			"see docs for more\n");
-	}
-	return false;
+    if ( M_CheckParm ("-net") ) I_Error("-net not supported\n");
+    return false;
 #endif
+}
+#endif
+
+#ifdef EMSCRIPTEN
+EMSCRIPTEN_KEEPALIVE
+void SRB2_LOG(char *textlog) {
+    CONS_Printf(M_GetText(textlog));
 }
 #endif

@@ -5,7 +5,7 @@ var Module = window["Module"] || {};
 function loadScript() {
   return new Promise((resolve, reject) => {
     var script = document.createElement("script");
-    script.src = "srb2kart.js";
+    script.src = "srb2legacy.js";
     script.onload = resolve;
     script.onerror = reject;
     document.body.append(script);

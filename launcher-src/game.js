@@ -48,11 +48,11 @@ function safeSymlink(targetPath, linkPath) {
 }
 
 function ensureUserDataTree() {
-  FS.mkdirTree("/home/web_user/.srb2kart/addons");
-  FS.mkdirTree("/home/web_user/.srb2kart/logs");
+  FS.mkdirTree("/home/web_user/.srb2_21/addons");
+  FS.mkdirTree("/home/web_user/.srb2_21/logs");
   FS.mkdirTree("/addons");
-  safeSymlink("/home/web_user/.srb2kart", "/addons/.srb2");
-  safeSymlink("/home/web_user/.srb2kart", "/addons/userdata");
+  safeSymlink("/home/web_user/.srb2_21", "/addons/.srb2_21");
+  safeSymlink("/home/web_user/.srb2_21", "/addons/userdata");
 }
 
 async function keepAlive() {
@@ -85,7 +85,7 @@ function loadScript() {
   return new Promise((resolve, reject) => {
     loaderContent.textContent = "Loading game script...";
     var script = document.createElement("script");
-    script.src = "srb2kart.js?n=1&v=" + Date.now();
+    script.src = "srb2legacy.js?n=1&v=" + Date.now();
     script.onload = resolve;
     script.onerror = reject;
     document.body.append(script);

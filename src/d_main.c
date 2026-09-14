@@ -630,6 +630,16 @@ void D_SRB2Loop(void)
 	// hack to start on a nice clear console screen.
 	COM_ImmedExecute("cls;version");
 
+#ifdef EMSCRIPTEN
+	EM_ASM(
+		try {
+			StartedMainLoopCallback();
+		} catch (err) {
+			console.log('Faild to find StartedMainLoopCallback()');
+		}
+	);
+#endif
+
 	I_FinishUpdate(); // page flip or blit buffer
 	/*
 	LMFAO this was showing garbage under OpenGL
@@ -1229,7 +1239,7 @@ void D_SRB2Main(void)
 	// But remove it first on Emscripten
 	snprintf(addonsdir, sizeof addonsdir, "%s%s%s", srb2home, PATHSEP, "addons");
 #ifdef __EMSCRIPTEN__
-	EM_ASM(
+	/*EM_ASM(
 	function force_rmdir(path) {
 		FS.readdir(path).forEach(function(f) {
 		if (f === '.' || f === '..') return;
@@ -1245,7 +1255,7 @@ void D_SRB2Main(void)
   	})
 	}
 	if (FS.analyzePath('/home/web_user/.srb2_21/addons').exists) force_rmdir('/home/web_user/.srb2_21/addons');
-	);
+	);*/
 #endif
 	I_mkdir(addonsdir, 0755);
 

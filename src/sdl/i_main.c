@@ -250,7 +250,8 @@ int main(int argc, char **argv)
     myargc = argc;
 	myargv = argv;
 
-    I_MountIDBFS(); // Mount IndexedDB filesystem on entry
+    /*I_MountIDBFS();*/ // Mount IndexedDB filesystem on entry
+	main_program();
 
 	return 0;
 }

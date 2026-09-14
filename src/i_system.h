@@ -365,6 +365,8 @@ const char *I_GetPlatform(void);
 FUNCINLINE static ATTRINLINE void I_MountIDBFS(void)
 {
 #ifdef __EMSCRIPTEN__
+//Launcher handles this.
+/*
 	EM_ASM(
 		try
 		{
@@ -382,6 +384,7 @@ FUNCINLINE static ATTRINLINE void I_MountIDBFS(void)
 			Module.ccall("main_program", 'number', [], [], {async: true});
 		}
     	);
+		*/
 #endif
 }
 
@@ -391,11 +394,14 @@ FUNCINLINE static ATTRINLINE void I_MountIDBFS(void)
 FUNCINLINE static ATTRINLINE void I_SyncIDBFS(void)
 {
 #ifdef __EMSCRIPTEN__
+//Launcher handles this.
+/*
 	EM_ASM(
 		FS.syncfs(function (err) {
 		console.log(err); }
 	);
 	);
+	*/
 #endif
 }
 

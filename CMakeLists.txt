@@ -48,8 +48,8 @@ set(CPACK_PACKAGE_VERSION_MAJOR ${SRB2_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${SRB2_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${SRB2_VERSION_PATCH})
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "CMake ${CMAKE_VERSION_MAJOR}.${CMAKE_VERSION_MINOR}")
-set(CPACK_DMG_BACKGROUND_IMAGE "${CMAKE_CURRENT_SOURCE_DIR}/assets/DMGbackground.png")
-set(CPACK_DMG_DS_STORE_SETUP_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/assets/CMakeDMGSetup.scpt")
+## set(CPACK_DMG_BACKGROUND_IMAGE "${CMAKE_CURRENT_SOURCE_DIR}/assets/DMGbackground.png")
+## set(CPACK_DMG_DS_STORE_SETUP_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/assets/CMakeDMGSetup.scpt")
 include(CPack)
 
 # Set up CMAKE path
@@ -138,7 +138,7 @@ set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
 
 add_subdirectory(src)
-add_subdirectory(assets)
+## add_subdirectory(assets)
 
 if(${CMAKE_SYSTEM} MATCHES "Android")
 	add_subdirectory(thirdparty)

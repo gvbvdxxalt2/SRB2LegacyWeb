@@ -28,7 +28,7 @@ var unsafePaths = [
   "/home/",
   "/proc/",
   "/tmp/",
-  "/addons/.srb2kart/", //We already have one directory thats used for main access so there's no reason to have two identical directories.
+  "/addons/.srb2_21/", //We already have one directory thats used for main access so there's no reason to have two identical directories.
 ];
 
 var filePathClipboard = null;

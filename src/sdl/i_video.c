@@ -74,6 +74,12 @@
 #include "ogl_sdl.h"
 #endif
 
+#ifdef EMSCRIPTEN
+#include <emscripten.h>
+
+extern void SRB2_VideoResolutionInfo(int width, int height);
+#endif
+
 // maximum number of windowed modes (see windowedModes[][])
 #define MAXWINMODES (18)
 
@@ -185,7 +191,7 @@ static void SDLSetMode(INT32 width, INT32 height, SDL_bool fullscreen, SDL_bool 
 		if (fullscreen)
 		{
 			wasfullscreen = SDL_TRUE;
-			SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+			//SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 			I_SetBorderlessWindow();
 		}
 		else // windowed mode
@@ -193,7 +199,7 @@ static void SDLSetMode(INT32 width, INT32 height, SDL_bool fullscreen, SDL_bool 
 			if (wasfullscreen)
 			{
 				wasfullscreen = SDL_FALSE;
-				SDL_SetWindowFullscreen(window, 0);
+				//SDL_SetWindowFullscreen(window, 0);
 				I_SetBorderlessWindow();
 			}
 			// Reposition window only in windowed mode
@@ -215,7 +221,7 @@ static void SDLSetMode(INT32 width, INT32 height, SDL_bool fullscreen, SDL_bool 
 		SDL_SetWindowSize(window, width, height);
 		if (fullscreen)
 		{
-			SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+			//SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 			I_SetBorderlessWindow();
 		}
 	}
@@ -254,6 +260,10 @@ static void SDLSetMode(INT32 width, INT32 height, SDL_bool fullscreen, SDL_bool 
 		SDL_PixelFormatEnumToMasks(sw_texture_format, &bpp, &rmask, &gmask, &bmask, &amask);
 		vidSurface = SDL_CreateRGBSurface(0, width, height, bpp, rmask, gmask, bmask, amask);
 	}
+
+	#ifdef EMSCRIPTEN
+	SRB2_VideoResolutionInfo(width, height);
+	#endif
 }
 
 static INT32 Impl_SDL_Scancode_To_Keycode(SDL_Scancode code)
@@ -2026,4 +2036,123 @@ void I_SetBorderlessWindow(void)
 	SDL_SetWindowBordered(window, bordered);
 }
 
+#endif
+
+
+#ifdef EMSCRIPTEN
+#include <SDL2/SDL.h>
+#include "../doomdef.h"
+#include "../i_video.h"
+
+extern SDL_Window *window;
+extern SDL_Renderer *renderer;
+extern Uint8 *screens[5]; 
+
+int EMSCRIPTEN_KEEPALIVE change_resolution_safe(int x, int y)
+{
+	if (x < 320) x = 320;
+	if (y < 200) y = 200;
+	if (window)
+		SDL_SetWindowSize(window, x, y);
+	return 1;
+}
+
+void EMSCRIPTEN_KEEPALIVE inject_text(const char *text)
+{
+	event_t event;
+	size_t len = 0;
+
+	if (text == NULL || text[0] == '\0')
+		return;
+
+	event.type = ev_keydown;
+	while (text[len] != '\0')
+	{
+		event.data1 = (INT32)(unsigned char)text[len];
+		D_PostEvent(&event);
+		len++;
+	}
+}
+
+void EMSCRIPTEN_KEEPALIVE inject_keycode(int key, int type)
+{
+	event_t event;
+	if (type == 1)
+	{
+		event.type = ev_keyup;
+	}
+	else if (type == 0)
+	{
+		event.type = ev_keydown;
+	}
+	else
+	{
+		return;
+	}
+	event.data1 = key;
+	if (event.data1) D_PostEvent(&event);
+}
+
+void EMSCRIPTEN_KEEPALIVE unlock_mouse(void)
+{
+	SDLforceUngrabMouse();
+}
+
+void EMSCRIPTEN_KEEPALIVE SRB2_AddMouseDelta(int dx, int dy)
+{
+	SDL_SetWindowGrab(window, SDL_TRUE);
+
+	event_t event;
+	//SDL_memset(&event, 0, sizeof(event_t));
+	event.type = ev_mouse;
+	event.data1 = 0;
+	event.data2 = dx;
+	event.data3 = -dy;
+	D_PostEvent(&event);
+}
+
+void EMSCRIPTEN_KEEPALIVE mouse_button_down(int button)
+{
+	SDL_Event event;
+	event.type = SDL_MOUSEBUTTONDOWN;
+	event.button.button = button + 1; // SDL buttons are 1-based
+	event.button.state = SDL_PRESSED;
+	event.button.x = 0;
+	event.button.y = 0;
+	SDL_PushEvent(&event);
+}
+
+void EMSCRIPTEN_KEEPALIVE mouse_button_up(int button)
+{
+	SDL_Event event;
+	event.type = SDL_MOUSEBUTTONUP;
+	event.button.button = button + 1;
+	event.button.state = SDL_RELEASED;
+	event.button.x = 0;
+	event.button.y = 0;
+	SDL_PushEvent(&event);
+}
+
+void EMSCRIPTEN_KEEPALIVE mouse_wheel(int delta)
+{
+	SDL_Event event;
+	event.type = SDL_MOUSEWHEEL;
+	event.wheel.y = -delta; // Positive for up in SDL, but JS deltaY positive for down
+	event.wheel.x = 0;
+	SDL_PushEvent(&event);
+}
+
+void EMSCRIPTEN_KEEPALIVE mouse_wheel_xy(int dx, int dy)
+{
+	SDL_Event event;
+	event.type = SDL_MOUSEWHEEL;
+	event.wheel.x = -dx; // Assuming similar convention
+	event.wheel.y = -dy;
+	SDL_PushEvent(&event);
+}
+
+void EMSCRIPTEN_KEEPALIVE lock_mouse(void)
+{
+	SDLdoGrabMouse();
+}
 #endif

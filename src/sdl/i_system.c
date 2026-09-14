@@ -2547,10 +2547,7 @@ death:
 	W_Shutdown();
 #ifdef __EMSCRIPTEN__
 	emscripten_cancel_main_loop();
-	EM_ASM({
-		noExitRuntime = false;
-		window.location.reload();
-	});
+	emscripten_force_exit(0);
 #endif
 	exit(0);
 }
