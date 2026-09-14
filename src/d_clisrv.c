@@ -2749,13 +2749,13 @@ consvar_t cv_netticbuffer = CVAR_INIT ("netticbuffer", "1", "Amount of tics to s
 consvar_t cv_allownewplayer = CVAR_INIT ("allowjoin", "On", "Allow or disallow players from joining a netgame", CV_NETVAR, CV_OnOff, NULL);
 consvar_t cv_joinnextround = CVAR_INIT ("joinnextround", "Off", NULL, CV_NETVAR, CV_OnOff, NULL); /// \todo not done
 static CV_PossibleValue_t maxplayers_cons_t[] = {{2, "MIN"}, {32, "MAX"}, {0, NULL}};
-consvar_t cv_maxplayers = CVAR_INIT ("maxplayers", "8", "The maximum amount of players that can join a netgame", CV_SAVE, maxplayers_cons_t, NULL);
+consvar_t cv_maxplayers = CVAR_INIT ("maxplayers", "32", "The maximum amount of players that can join a netgame", CV_SAVE, maxplayers_cons_t, NULL);
 consvar_t cv_allowgamestateresend = CVAR_INIT ("allowgamestateresend", "On", "Allow the server to resend the gamestate if a client goes out of synch", CV_SAVE, CV_OnOff, NULL);
 consvar_t cv_blamecfail = CVAR_INIT ("blamecfail", "Off", "Show when a player is out of synch", 0, CV_OnOff, NULL);
 
 // max file size to send to a player (in kilobytes)
 static CV_PossibleValue_t maxsend_cons_t[] = {{-1, "MIN"}, {999999999, "MAX"}, {0, NULL}};
-consvar_t cv_maxsend = CVAR_INIT ("maxsend", "4096", "Maximum file size to send to joiners of a netgame, -1 is infinite", CV_SAVE, maxsend_cons_t, NULL);
+consvar_t cv_maxsend = CVAR_INIT ("maxsend", "-1", "Maximum file size to send to joiners of a netgame, -1 is infinite", CV_SAVE, maxsend_cons_t, NULL);
 consvar_t cv_noticedownload = CVAR_INIT ("noticedownload", "Off", "Notify the server when a client starts downloading a file", CV_SAVE, CV_OnOff, NULL);
 
 // Speed of file downloading (in packets per tic)

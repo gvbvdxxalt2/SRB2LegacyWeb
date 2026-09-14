@@ -931,7 +931,9 @@ static menuitem_t MP_ServerMenu[] =
 {
 	{IT_DISABLED|IT_NOTHING,    	NULL, "",  NULL,      NULL,    0},
 #ifndef NONET
+#ifndef EMSCRIPTEN
 	{IT_STRING|IT_CALL,              NULL, "Room...",     NULL,           M_RoomMenu,         10},
+#endif
 	{IT_STRING|IT_CVAR|IT_CV_STRING, NULL, "Server Name",    NULL,        &cv_servername,     20},
 	{IT_STRING|IT_CVAR,              NULL, "Max Players",     NULL,      &cv_maxplayers,    46},
 	{IT_STRING|IT_CVAR,              NULL, "Allow WAD Downloading", NULL, &cv_downloading,   56},
@@ -946,7 +948,9 @@ enum
 {
 	mp_server_dummy = 0, // exists solely so zero-indexed in both NONET and not NONET
 #ifndef NONET
+#ifndef EMSCRIPTEN
 	mp_server_room,
+#endif
 	mp_server_name,
 	mp_server_maxpl,
 	mp_server_waddl,
@@ -1531,8 +1535,10 @@ enum
 static menuitem_t OP_GameOptionsMenu[] =
 {
 #ifndef NONET
+#ifndef EMSCRIPTEN
 	{IT_STRING | IT_CVAR | IT_CV_STRING,
 	                      NULL, "Master server",     NULL,       &cv_masterserver,       5},
+#endif
 	{IT_STRING | IT_SUBMENU, NULL, "Chat Options...", "Change how the chat display looks",      &OP_ChatOptionsDef,     20},
 #endif
 	{IT_STRING | IT_CVAR, NULL, "Show HUD",       NULL,          &cv_showhud,            25},
@@ -1664,7 +1670,7 @@ static menuitem_t OP_LegacyOptionsMenu[] =
 
 	{IT_HEADER|IT_STRING,  NULL, "About", NULL, NULL, 70},
 	{IT_SUBMENU|IT_STRING, NULL, "Credits", NULL, &OP_LegacyCreditsDef, 80},
-	{IT_STRING|IT_CALL, NULL, "Report an Issue (Web)", "If you found a problem with SRB2 Legacy specifically with the web version, here is where you go.", M_LegacyWebReportIssue, 90},
+	{IT_STRING|IT_CALL, NULL, "Report an Issue (Web)", "If you found a problem with SRB2 Legacy specifically with this web version, here is where you go.", M_LegacyWebReportIssue, 90},
 	{IT_STRING|IT_CALL, NULL, "Report an Issue", "If you found a problem with SRB2 Legacy or have a suggestion, here is where to go.", M_LegacyReportIssue, 100},
 };
 
@@ -8430,6 +8436,12 @@ static boolean M_CheckMODVersion(void)
 static void M_ConnectMenu(INT32 choice)
 {
 	(void)choice;
+
+	#ifdef EMSCRIPTEN
+	M_StartMessage(M_GetText("To search for netgames you'll need to exit the game and use the \"Browse & Host netgames\" (purple) button to find them.\nIf you're just trying to host an private netgame session, you can just directly do it through this menu."),NULL,MM_NOTHING);
+	return;
+	#endif
+
 	// modified game check: no longer handled
 	// we don't request a restart unless the filelist differs
 
@@ -8448,6 +8460,11 @@ static void M_RoomMenu(INT32 choice)
 	INT32 i;
 
 	(void)choice;
+
+	#ifdef EMSCRIPTEN
+	M_StartMessage(M_GetText("This feature isn't supported!\nTo host a public netgame, you'll need exit the game and use the \"Browse & Host netgames\" (purple) button.\nFor private netgame sessions you don't need to change this setting."),NULL,MM_NOTHING);
+	return;
+	#endif
 
 	// Display a little "please wait" message.
 	M_DrawTextBox(52, BASEVIDHEIGHT/2-10, 25, 3);
@@ -8548,18 +8565,29 @@ static void M_DrawServerMenu(void)
 {
 	M_DrawGenericMenu();
 
-#ifndef NONET
-	// Room name
+	#ifdef EMSCRIPTEN
 	if (currentMenu == &MP_ServerDef)
 	{
 		M_DrawLevelPlatterHeader(currentMenu->y - lsheadingheight/2, "Server settings", true);
+	}
+	#endif
+
+#ifndef NONET
+	// Room name
+#ifndef EMSCRIPTEN
+	if (currentMenu == &MP_ServerDef)
+	{
+		M_DrawLevelPlatterHeader(currentMenu->y - lsheadingheight/2, "Server settings", true);
+		#ifndef EMSCRIPTEN
 		if (ms_RoomId < 0)
 			V_DrawRightAlignedString(BASEVIDWIDTH - currentMenu->x, currentMenu->y + MP_ServerMenu[mp_server_room].alphaKey,
 			                         V_YELLOWMAP, (itemOn == mp_server_room) ? "<Select to change>" : "<Offline Mode>");
 		else
 			V_DrawRightAlignedString(BASEVIDWIDTH - currentMenu->x, currentMenu->y + MP_ServerMenu[mp_server_room].alphaKey,
 			                         V_YELLOWMAP, room_list[menuRoomIndex].name);
+		#endif
 	}
+#endif
 #endif
 
 	if (cv_nextmap.value)
