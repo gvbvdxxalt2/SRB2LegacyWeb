@@ -978,9 +978,9 @@ void EMSCRIPTEN_KEEPALIVE SRB2_SetDirectAction(int control_index, int is_down)
 			bound_key = KEY_UPARROW;
 		} else if (control_index == gc_lookdown || control_index == gc_backward) {
 			bound_key = KEY_DOWNARROW;
-		} else if (control_index == gc_strafeleft || control_index == gc_camleft) {
+		} else if (control_index == gc_strafeleft || control_index == gc_camleft || control_index == gc_turnleft) {
 			bound_key = KEY_LEFTARROW;
-		} else if (control_index == gc_straferight || control_index == gc_camright) {
+		} else if (control_index == gc_straferight || control_index == gc_camright || control_index == gc_turnright) {
 			bound_key = KEY_RIGHTARROW;
 		} else {
 			return;

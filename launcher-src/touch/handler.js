@@ -49,10 +49,10 @@ function sendJoystick(x,y) {
         return;
     }
     var range = 0.7;
-    sendInput("gc_lookup", y > range);
-    sendInput("gc_lookdown", y < -range);
-    sendInput("gc_turnleft", x < -range);
-    sendInput("gc_turnright", x > range);
+    sendInput("gc_forward", y > range);
+    sendInput("gc_backward", y < -range);
+    sendInput("gc_strafeleft", x < -range);
+    sendInput("gc_straferight", x > range);
 }
 
 module.exports = {

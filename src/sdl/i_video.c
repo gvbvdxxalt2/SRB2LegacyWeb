@@ -2057,21 +2057,30 @@ int EMSCRIPTEN_KEEPALIVE change_resolution_safe(int x, int y)
 	return 1;
 }
 
-void EMSCRIPTEN_KEEPALIVE inject_text(const char *text)
+EMSCRIPTEN_KEEPALIVE void inject_text(const char *text)
 {
-	event_t event;
-	size_t len = 0;
+    event_t event;
+    size_t i = 0;
 
-	if (text == NULL || text[0] == '\0')
-		return;
+    if (text == NULL || text[0] == '\0')
+        return;
 
-	event.type = ev_keydown;
-	while (text[len] != '\0')
-	{
-		event.data1 = (INT32)(unsigned char)text[len];
-		D_PostEvent(&event);
-		len++;
-	}
+    while (text[i] != '\0')
+    {
+        INT32 key = (INT32)(unsigned char)text[i];
+
+        // Post Key Down
+        event.type = ev_keydown;
+        event.data1 = key;
+        D_PostEvent(&event);
+
+        // Post Key Up so the engine doesn't think the key is stuck held
+        event.type = ev_keyup;
+        event.data1 = key;
+        D_PostEvent(&event);
+
+        i++;
+    }
 }
 
 void EMSCRIPTEN_KEEPALIVE inject_keycode(int key, int type)
