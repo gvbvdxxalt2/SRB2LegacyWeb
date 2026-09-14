@@ -1,0 +1,37 @@
+{
+  "name": "srb2-legacy-web",
+  "version": "2.1.25",
+  "scripts": {
+    "build": "webpack",
+    "start": "webpack-dev-server",
+    "watch": "webpack --watch",
+    "format": "prettier --write \"launcher-src/**/*.js\"",
+    "relay": "node relay-src/index.js",
+    "watchrelay": "node --watch relay-src/index.js",
+    "build-single-html": "webpack && node single-html-gen.js"
+  },
+  "devDependencies": {
+    "copy-webpack-plugin": "^12.0.2",
+    "html-webpack-plugin": "^5.6.3",
+    "imports-loader": "^5.0.0",
+    "jszip": "^3.10.1",
+    "process": "^0.11.10",
+    "raw-loader": "^4.0.2",
+    "url-loader": "^4.1.1",
+    "webpack": "^5.97.1",
+    "webpack-cli": "^6.0.1"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "filesize": "^11.0.23",
+    "prettier": "^3.6.2",
+    "simple-peer": "^9.11.1",
+    "twgl.js": "^7.0.0",
+    "webpack-dev-server": "^5.2.2"
+  },
+  "description": "Sonic Robo Blast 2 Legacy webassembly port with launcher",
+  "repository": "https://github.com/gvbvdxxalt2/SRB2LegacyWeb",
+  "author": "Gvbvdxx",
+  "license": "MIT",
+  "private": false
+}
