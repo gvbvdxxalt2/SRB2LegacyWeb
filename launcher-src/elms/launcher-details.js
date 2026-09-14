@@ -3,10 +3,10 @@ module.exports = [
 
   {
     element: "h2",
-    textContent: "Experience SRB2Kart Anywhere",
+    textContent: "Experience SRB2 Legacy Anywhere",
   },
 
-  "SRB2KartWeb is an advanced, browser-based launcher for Sonic Robo Blast 2 Kart—the premier fan-made 3D Sonic the Hedgehog experience. Built on the Doom Legacy engine, this port allows you to jump into high-speed racing and full online multiplayer directly in your browser, no installation required.",
+  "SRB2Legacy Web is an advanced, browser-based launcher for Sonic Robo Blast 2 —the premier fan-made 3D Sonic the Hedgehog experience. Built on the Doom Legacy engine, this port allows you to jump into high-speed gameplay and full online multiplayer directly in your browser, no installation required.",
 
   /////////////////////////////////////////////////////////
 
@@ -40,7 +40,7 @@ module.exports = [
   "As this is an experimental web port, you may encounter technical issues or performance bugs. If the game crashes, please check your browser's developer console (F12) for error logs and report them on our ",
   {
     element: "a",
-    href: "https://github.com/gvbvdxxalt2/SRB2KartWeb/issues",
+    href: "https://github.com/gvbvdxxalt2/SRB2LegacyWeb/issues",
     target: "_blank",
     textContent: "GitHub Issues page",
   },

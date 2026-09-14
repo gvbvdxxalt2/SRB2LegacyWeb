@@ -241,23 +241,7 @@ void SRB2_NetworkClosed(int relay_id) {
 
     if (node == -1) return;
 
-    // 1. Remove all players assigned to this node via net command
-    INT32 p = nodetoplayer[node];
-    if (p >= 0 && playeringame[p]) {
-        UINT8 buf[2];
-        buf[0] = (UINT8)p;
-        buf[1] = (UINT8)KR_LEAVE;
-        SendNetXCmd(XD_KICK, buf, 2);
-    }
-
-    // Check for splitscreen secondary players on the same node
-    p = nodetoplayer2[node];
-    if (p >= 0 && playeringame[p]) {
-        UINT8 buf[2];
-        buf[0] = (UINT8)p;
-        buf[1] = (UINT8)KR_LEAVE;
-        SendNetXCmd(XD_KICK, buf, 2);
-    }
+    SendKick(node, KICK_MSG_PLAYER_QUIT);
 
     // 2. Clear network-level node state so it can be reused by new connections
     nodeconnected[node] = false;

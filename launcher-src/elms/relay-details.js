@@ -51,9 +51,9 @@ module.exports = [
       },
       {
         element: "a",
-        href: "https://github.com/gvbvdxxalt2/SRB2KartWeb/",
+        href: "https://github.com/gvbvdxxalt2/SRB2LegacyWeb/",
         target: "_blank",
-        textContent: "SRB2KartWeb Main Repository",
+        textContent: "SRB2LegacyWeb Main Repository",
       },
       {
         element: "br",

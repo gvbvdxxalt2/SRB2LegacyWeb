@@ -17,7 +17,7 @@ module.exports = [
   {
     element: "img",
     className: "srb2Logo",
-    src: "images/srb2logo.png"
+    src: "images/legacylogo.png"
   },
   {
     element: "div",

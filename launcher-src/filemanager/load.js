@@ -32,11 +32,11 @@ function safeSymlink(targetPath, linkPath) {
 }
 
 function ensureUserDataTree() {
-  FS.mkdirTree("/home/web_user/.srb2kart/addons");
-  FS.mkdirTree("/home/web_user/.srb2kart/logs");
+  FS.mkdirTree("/home/web_user/.srb2_21/addons");
+  FS.mkdirTree("/home/web_user/.srb2_21/logs");
   FS.mkdirTree("/addons");
-  safeSymlink("/home/web_user/.srb2kart", "/addons/.srb2kart");
-  safeSymlink("/home/web_user/.srb2kart", "/addons/userdata");
+  safeSymlink("/home/web_user/.srb2_21", "/addons/.srb2_21");
+  safeSymlink("/home/web_user/.srb2_21", "/addons/userdata");
 }
 
 async function loadFilesystem() {

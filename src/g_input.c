@@ -942,3 +942,67 @@ void Command_Setcontrol2_f(void)
 
 	setcontrol(gamecontrolbis);
 }
+
+
+#ifdef EMSCRIPTEN
+
+#include <emscripten.h>
+#include "g_game.h"
+#include "d_main.h"
+
+void EMSCRIPTEN_KEEPALIVE SRB2_SetDirectAction(int control_index, int is_down)
+{
+	// Bounds check first before any array access
+	if (control_index < 0 || control_index >= num_gamecontrols)
+		return;
+
+
+	INT32 bound_key = gamecontrol[control_index][0];
+
+	// Fall back to secondary binding if primary isn't set
+	if (bound_key == 0)
+		bound_key = gamecontrol[control_index][1];
+
+	// If no key is bound to this control, ignore the event
+	if (bound_key == 0)
+		return;
+
+	if (menuactive) {
+		if (control_index == gc_jump || control_index == gc_fire) {
+			bound_key = KEY_ENTER;
+		} else if (control_index == gc_use) {
+			bound_key = KEY_ESCAPE;
+		} else if (control_index == gc_systemmenu) {
+			bound_key = KEY_ESCAPE;
+		} else if (control_index == gc_lookup || control_index == gc_forward) {
+			bound_key = KEY_UPARROW;
+		} else if (control_index == gc_lookdown || control_index == gc_backward) {
+			bound_key = KEY_DOWNARROW;
+		} else if (control_index == gc_strafeleft || control_index == gc_camleft) {
+			bound_key = KEY_LEFTARROW;
+		} else if (control_index == gc_straferight || control_index == gc_camright) {
+			bound_key = KEY_RIGHTARROW;
+		} else {
+			return;
+		}
+	}
+
+	if (chat_on) {
+		if (control_index == gc_talkkey) {
+			bound_key = KEY_ESCAPE;
+		} else {
+			return;
+		}
+		if (control_index == gc_teamkey) {
+			bound_key = KEY_ESCAPE;
+		} else {
+			return;
+		}
+	}
+	
+	event_t ev2;
+	ev2.type = is_down ? ev_keydown : ev_keyup;
+	ev2.data1 = bound_key;
+	D_PostEvent(&ev2);
+}
+#endif

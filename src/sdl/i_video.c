@@ -203,13 +203,13 @@ static void SDLSetMode(INT32 width, INT32 height, SDL_bool fullscreen, SDL_bool 
 				I_SetBorderlessWindow();
 			}
 			// Reposition window only in windowed mode
-			SDL_SetWindowSize(window, width, height);
+			//SDL_SetWindowSize(window, width, height);
 			if (reposition)
 			{
-				SDL_SetWindowPosition(window,
+				/*SDL_SetWindowPosition(window,
 					SDL_WINDOWPOS_CENTERED_DISPLAY(SDL_GetWindowDisplayIndex(window)),
 					SDL_WINDOWPOS_CENTERED_DISPLAY(SDL_GetWindowDisplayIndex(window))
-				);
+				);*/
 			}
 		}
 	}
@@ -218,7 +218,7 @@ static void SDLSetMode(INT32 width, INT32 height, SDL_bool fullscreen, SDL_bool 
 		Impl_CreateWindow(fullscreen);
 		Impl_SetWindowIcon();
 		wasfullscreen = fullscreen;
-		SDL_SetWindowSize(window, width, height);
+		//SDL_SetWindowSize(window, width, height);
 		if (fullscreen)
 		{
 			//SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);

@@ -218,7 +218,7 @@ async function initGame() {
 
   await downloadAndSaveAssets();
 
-  loaderContent.textContent = "SRB2Kart is starting...";
+  loaderContent.textContent = "SRB2 Legacy is starting...";
 
   keepAlive(); // Try to keep the screen awake while playing
 
@@ -333,7 +333,7 @@ async function startGame(options = {}) {
     dialog.alert(
       "Error loading the game, look in the console for full error. \n" + e,
     );
-    console.error("SRB2Kart Load error: ", e);
+    console.error("SRB2 Legacy Load error: ", e);
     return;
   }
 }

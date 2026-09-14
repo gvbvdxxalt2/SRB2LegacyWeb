@@ -1100,7 +1100,7 @@ async function moveFilesToDest(dest) {
       try {
         refreshFileList();
         console.log("File list loaded successfully at " + currentPath);
-        dialog.alert("Welcome to the file manager!\nRight click on empty space to create folders and upload files.\nRight click on files/folders for more options.\nHere is where you can add addons to your SRB2Kart Web experience, just like you would with a normal SRB2Kart installation!");
+        dialog.alert("Welcome to the file manager!\nRight click on empty space to create folders and upload files.\nRight click on files/folders for more options.\nHere is where you can add addons to your SRB2 Legacy Web experience, just like you would with a normal SRB2 Legacy installation!");
       } catch (e) {
         console.error("Refresh failed:", e);
         // Fallback to root if the symlink is being stubborn
@@ -1126,7 +1126,7 @@ var checkInterval = setInterval(() => {
     clearInterval(checkInterval);
     (async function () {
       await dialog.alert(
-        "Another instance of SRB2Kart Web is running. \n" +
+        "Another instance of SRB2 Legacy Web is running. \n" +
           "Please close other instances and press OK to reload.",
       );
       window.location.reload();

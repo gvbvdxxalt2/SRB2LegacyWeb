@@ -331,6 +331,7 @@ static patch_t *addonsp[NUM_EXT+5];
 menu_t OP_LegacyOptionsDef;
 menu_t OP_LegacyCreditsDef;
 static void M_LegacyReportIssue(INT32 choice);
+static void M_LegacyWebReportIssue(INT32 choice);
 
 #define numaddonsshown 4
 
@@ -1663,7 +1664,8 @@ static menuitem_t OP_LegacyOptionsMenu[] =
 
 	{IT_HEADER|IT_STRING,  NULL, "About", NULL, NULL, 70},
 	{IT_SUBMENU|IT_STRING, NULL, "Credits", NULL, &OP_LegacyCreditsDef, 80},
-	{IT_STRING|IT_CALL, NULL, "Report an Issue", "If you found a problem with SRB2 Legacy or have a suggestion, here is where to go.", M_LegacyReportIssue, 90},
+	{IT_STRING|IT_CALL, NULL, "Report an Issue (Web)", "If you found a problem with SRB2 Legacy specifically with the web version, here is where you go.", M_LegacyWebReportIssue, 90},
+	{IT_STRING|IT_CALL, NULL, "Report an Issue", "If you found a problem with SRB2 Legacy or have a suggestion, here is where to go.", M_LegacyReportIssue, 100},
 };
 
 static menuitem_t OP_LegacyCreditsMenu[] =
@@ -1685,6 +1687,9 @@ static menuitem_t OP_LegacyCreditsMenu[] =
 	{IT_STRING, NULL,           "SRB2 Classic",               NULL, NULL, 140},
 	{IT_STRING, NULL,           "SRB2Kart-Saturn",            NULL, NULL, 150},
 	{IT_STRING, NULL,           "SRB2EventZ",                 NULL, NULL, 160}, // Netgame testing and feature ideas
+	{IT_HEADER|IT_STRING, NULL, "Web Port:",            NULL, NULL, 170},
+	{IT_STRING, NULL,           "GVBVDXX",                 NULL, NULL, 180},
+	{IT_STRING, NULL,           "Google Gemini (Some C related Help)",                 NULL, NULL, 190},
 };
 
 static void M_LegacyCreditsToolTips(void)
@@ -2153,7 +2158,7 @@ menu_t OP_ScreenshotOptionsDef = DEFAULTSCROLLMENUSTYLE("M_DATA", OP_ScreenshotO
 menu_t OP_AddonsOptionsDef = DEFAULTMENUSTYLE("M_ADDONS", OP_AddonsOptionsMenu, &OP_MainDef, 30, 30);
 menu_t OP_EraseDataDef = DEFAULTMENUSTYLE("M_DATA", OP_EraseDataMenu, &OP_DataOptionsDef, 60, 30);
 menu_t OP_LegacyOptionsDef = DEFAULTMENUSTYLE(NULL, OP_LegacyOptionsMenu, &OP_MainDef, 30, 30);
-menu_t OP_LegacyCreditsDef = DEFAULTMENUSTYLE(NULL, OP_LegacyCreditsMenu, &OP_LegacyOptionsDef, 30, 15);
+menu_t OP_LegacyCreditsDef = DEFAULTSCROLLMENUSTYLE(NULL, OP_LegacyCreditsMenu, &OP_LegacyOptionsDef, 30, 15);
 
 // ==========================================================================
 // CVAR ONCHANGE EVENTS GO HERE
@@ -9381,6 +9386,15 @@ static void M_LegacyReportIssue(INT32 choice)
 
 	if (url == -1) // SDL_OpenURL unsupported or failed
 		M_StartMessage(M_GetText("Open the following in your web browser:\n\n" ISSUES" \n\n(Press a key)\n"), NULL, MM_NOTHING);
+}
+
+static void M_LegacyWebReportIssue(INT32 choice)
+{
+	(void)choice;
+	int url = I_OpenURL(ISSUES_WEB);
+
+	if (url == -1) // SDL_OpenURL unsupported or failed
+		M_StartMessage(M_GetText("Open the following in your web browser:\n\n" ISSUES_WEB" \n\n(Press a key)\n"), NULL, MM_NOTHING);
 }
 
 // =============

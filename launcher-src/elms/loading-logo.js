@@ -5,7 +5,8 @@ module.exports = [
       width: "300px",
       height: "160px",
       objectFit: "contain",
+      imageRendering: "pixelated"
     },
-    src: "images/srb2logo.png",
+    src: "images/legacylogo.png",
   },
 ];
