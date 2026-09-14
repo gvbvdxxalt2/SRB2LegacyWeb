@@ -2059,28 +2059,17 @@ int EMSCRIPTEN_KEEPALIVE change_resolution_safe(int x, int y)
 
 EMSCRIPTEN_KEEPALIVE void inject_text(const char *text)
 {
-    event_t event;
-    size_t i = 0;
-
     if (text == NULL || text[0] == '\0')
         return;
 
-    while (text[i] != '\0')
-    {
-        INT32 key = (INT32)(unsigned char)text[i];
-
-        // Post Key Down
-        event.type = ev_keydown;
-        event.data1 = key;
-        D_PostEvent(&event);
-
-        // Post Key Up so the engine doesn't think the key is stuck held
-        event.type = ev_keyup;
-        event.data1 = key;
-        D_PostEvent(&event);
-
-        i++;
-    }
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_TEXTINPUT;
+    
+    // SDL_TEXTINPUT holds up to 32 bytes of UTF-8 in event.text.text
+    strncpy(event.text.text, text, sizeof(event.text.text) - 1);
+    
+    SDL_PushEvent(&event);
 }
 
 void EMSCRIPTEN_KEEPALIVE inject_keycode(int key, int type)
