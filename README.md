@@ -34,7 +34,7 @@ Launcher, networking, and playable site logic:
 
 1. `npm install` Install dependencies for the launcher.
 
-2. `npm run build` (Outputs to launcher-build) Builds everything, this will automatically also copy over the emscripten build and game resource folders. (You can't use the site on file:// URLs due to how browsers limit resources from being fetched there)
+2. `npm run build` (Outputs to launcher-dist) Builds everything, this will automatically also copy over the emscripten build and game resource folders. (You can't use the site on file:// URLs due to how browsers limit resources from being fetched there)
 
 3. (Optional) `npm run start` This starts up a development server that automatically updates as you change the launcher files or rebuild the emscripten logic. You can also set an enviroment variable `PORT` to the port number if you need a specific HTTP port.
 
