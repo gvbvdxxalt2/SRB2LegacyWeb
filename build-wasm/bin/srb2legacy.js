@@ -966,6 +966,27 @@ async function createWasm() {
       return 1;
     }
 
+  function _SRB2_ServerInfoResponse(
+      serverName,
+      maxPlayers,
+      map,
+      mapTitle,
+      ingame_players,
+      playerNameList
+    ) {
+      if (window.SRB2_ServerInfoResponse) {
+        return window.SRB2_ServerInfoResponse({
+          name: UTF8ToString(serverName),
+          map: UTF8ToString(map),
+          mapTitle: UTF8ToString(mapTitle),
+          ingamePlayers: ingame_players,
+          playerNames: UTF8ToString(playerNameList),
+          maxPlayers: +maxPlayers || 0,
+        });
+      }
+      return 1;
+    }
+
   function _SRB2_VideoResolutionInfo(width,height) {
       if (window.SRB2HandleVideoResolution) {
         window.SRB2HandleVideoResolution(width,height);
@@ -10577,6 +10598,7 @@ var _openmpt_module_select_subsong = Module['_openmpt_module_select_subsong'] = 
 var _openmpt_module_set_repeat_count = Module['_openmpt_module_set_repeat_count'] = makeInvalidEarlyAccess('_openmpt_module_set_repeat_count');
 var _openmpt_module_get_num_subsongs = Module['_openmpt_module_get_num_subsongs'] = makeInvalidEarlyAccess('_openmpt_module_get_num_subsongs');
 var _openmpt_module_read_interleaved_stereo = Module['_openmpt_module_read_interleaved_stereo'] = makeInvalidEarlyAccess('_openmpt_module_read_interleaved_stereo');
+var _SRB2_GetServerInfo = Module['_SRB2_GetServerInfo'] = makeInvalidEarlyAccess('_SRB2_GetServerInfo');
 var _openmpt_get_library_version = Module['_openmpt_get_library_version'] = makeInvalidEarlyAccess('_openmpt_get_library_version');
 var _openmpt_get_core_version = Module['_openmpt_get_core_version'] = makeInvalidEarlyAccess('_openmpt_get_core_version');
 var __ZN7openmpt19get_library_versionEv = Module['__ZN7openmpt19get_library_versionEv'] = makeInvalidEarlyAccess('__ZN7openmpt19get_library_versionEv');
@@ -10938,6 +10960,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports['openmpt_module_set_repeat_count'] != 'undefined', 'missing Wasm export: openmpt_module_set_repeat_count');
   assert(typeof wasmExports['openmpt_module_get_num_subsongs'] != 'undefined', 'missing Wasm export: openmpt_module_get_num_subsongs');
   assert(typeof wasmExports['openmpt_module_read_interleaved_stereo'] != 'undefined', 'missing Wasm export: openmpt_module_read_interleaved_stereo');
+  assert(typeof wasmExports['SRB2_GetServerInfo'] != 'undefined', 'missing Wasm export: SRB2_GetServerInfo');
   assert(typeof wasmExports['openmpt_get_library_version'] != 'undefined', 'missing Wasm export: openmpt_get_library_version');
   assert(typeof wasmExports['openmpt_get_core_version'] != 'undefined', 'missing Wasm export: openmpt_get_core_version');
   assert(typeof wasmExports['_ZN7openmpt19get_library_versionEv'] != 'undefined', 'missing Wasm export: _ZN7openmpt19get_library_versionEv');
@@ -11295,6 +11318,7 @@ function assignWasmExports(wasmExports) {
   _openmpt_module_set_repeat_count = Module['_openmpt_module_set_repeat_count'] = createExportWrapper('openmpt_module_set_repeat_count', wasmExports['openmpt_module_set_repeat_count'], 2);
   _openmpt_module_get_num_subsongs = Module['_openmpt_module_get_num_subsongs'] = createExportWrapper('openmpt_module_get_num_subsongs', wasmExports['openmpt_module_get_num_subsongs'], 1);
   _openmpt_module_read_interleaved_stereo = Module['_openmpt_module_read_interleaved_stereo'] = createExportWrapper('openmpt_module_read_interleaved_stereo', wasmExports['openmpt_module_read_interleaved_stereo'], 4);
+  _SRB2_GetServerInfo = Module['_SRB2_GetServerInfo'] = createExportWrapper('SRB2_GetServerInfo', wasmExports['SRB2_GetServerInfo'], 0);
   _openmpt_get_library_version = Module['_openmpt_get_library_version'] = createExportWrapper('openmpt_get_library_version', wasmExports['openmpt_get_library_version'], 0);
   _openmpt_get_core_version = Module['_openmpt_get_core_version'] = createExportWrapper('openmpt_get_core_version', wasmExports['openmpt_get_core_version'], 0);
   __ZN7openmpt19get_library_versionEv = Module['__ZN7openmpt19get_library_versionEv'] = createExportWrapper('_ZN7openmpt19get_library_versionEv', wasmExports['_ZN7openmpt19get_library_versionEv'], 0);
@@ -11625,6 +11649,8 @@ var wasmImports = {
   SRB2_ListenOn: _SRB2_ListenOn,
   /** @export */
   SRB2_NetworkSend: _SRB2_NetworkSend,
+  /** @export */
+  SRB2_ServerInfoResponse: _SRB2_ServerInfoResponse,
   /** @export */
   SRB2_VideoResolutionInfo: _SRB2_VideoResolutionInfo,
   /** @export */

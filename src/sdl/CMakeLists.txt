@@ -41,8 +41,14 @@ endif()
 target_sources(SRB2SDL2 PRIVATE 
 	${SRB2_SDL2_SOUNDIMPL}
 	ogl_sdl.c
-	i_net.c
 )
+
+if(EMSCRIPTEN)
+	target_sources(SRB2SDL2 PRIVATE 
+		i_net.c
+		emscripten_serverinfo.c
+	)
+endif()
 
 # Dependency
 if(${SRB2_CONFIG_USE_INTERNAL_LIBRARIES})
