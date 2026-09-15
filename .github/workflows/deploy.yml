@@ -3,7 +3,7 @@ name: Deploy SRB2Legacy Web
 
 on:
   push:
-    branches: ["master"]
+    branches: ["next"]
 
 permissions:
   contents: read
