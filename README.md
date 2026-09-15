@@ -11,10 +11,10 @@ Also see (Other ports by me): [SRB2web](https://github.com/gvbvdxxalt2/SRB2web),
 
 ## Compiling & Dependencies
 
-> [!INFO]
+> [!NOTE]
 > This mostly follows the same as [SRB2KartWeb](https://github.com/gvbvdxxalt2/SRB2KartWeb) and [SRB2web](https://github.com/gvbvdxxalt2/SRB2web) repos.
 
-> [!INFO]
+> [!NOTE]
 > Like I've said on other ports: most of these weren't possible entirely by myself (especially the networking support) thanks to the research and help from [Google Gemini](https://gemini.google.com). _This DOES NOT mean I did absolutley nothing myself._
 
 You'll need Node.JS installed, an Node.JS package manager of your choice (This guide follows NPM, but you can use yarn too) and also some version of linux, preferably you can use [Github Codespaces](https://github.com/codespaces), [Codesandbox](https://codesandbox.io), or (Tested on SRB2web) WSL if you're using Windows. Any typical linux installation should be fine.
