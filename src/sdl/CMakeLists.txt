@@ -43,7 +43,7 @@ target_sources(SRB2SDL2 PRIVATE
 	ogl_sdl.c
 )
 
-if(EMSCRIPTEN)
+if(${CMAKE_SYSTEM} MATCHES "Emscripten")
 	target_sources(SRB2SDL2 PRIVATE 
 		i_net.c
 		emscripten_serverinfo.c
