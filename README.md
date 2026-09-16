@@ -30,7 +30,7 @@ This should install and build everything automatically for the emscripten side, 
 
 3. Once you run `./setup-build.sh`, every time after that you can just use `./build-wasm.sh` to build it without checking everything, though it should know what isn't needed and what is.
 
-Launcher, networking, and playable site logic:
+Launcher, file manager, and [relay server](https://github.com/gvbvdxxalt2/SRB2Web-relay) client logic:
 
 1. `npm install` Install dependencies for the launcher.
 
