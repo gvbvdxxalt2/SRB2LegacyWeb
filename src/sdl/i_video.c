@@ -943,7 +943,7 @@ void I_GetEvent(void)
 					if (newjoy && (!JoyInfo.dev || !SDL_JoystickGetAttached(JoyInfo.dev))
 						&& JoyInfo2.dev != newjoy) // don't override a currently active device
 					{
-						cv_usejoystick.value = evt.jdevice.which + 1;
+						cv_usejoystick.value = I_GetJoystickDeviceIndex(newjoy) + 1; // raw index would miscount filtered-out devices (e.g. iOS Accelerometer)
 
 						if (JoyInfo2.dev)
 							cv_usejoystick2.value = I_GetJoystickDeviceIndex(JoyInfo2.dev) + 1;
@@ -959,7 +959,7 @@ void I_GetEvent(void)
 					else if (newjoy && (!JoyInfo2.dev || !SDL_JoystickGetAttached(JoyInfo2.dev))
 						&& JoyInfo.dev != newjoy) // don't override a currently active device
 					{
-						cv_usejoystick2.value = evt.jdevice.which + 1;
+						cv_usejoystick2.value = I_GetJoystickDeviceIndex(newjoy) + 1; // see cv_usejoystick assignment above
 
 						if (JoyInfo.dev)
 							cv_usejoystick.value = I_GetJoystickDeviceIndex(JoyInfo.dev) + 1;
