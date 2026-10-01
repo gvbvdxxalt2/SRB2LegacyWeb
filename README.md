@@ -23,6 +23,7 @@ Nightly builds can be obtained below
 - [Linux](https://nightly.link/srb2-preservation/srb2-legacy/workflows/ubuntu/next)
 - [macOS](https://nightly.link/srb2-preservation/srb2-legacy/workflows/macos/next)
 - [Android](https://nightly.link/srb2-preservation/srb2-legacy/workflows/android/next)
+- [iOS](https://nightly.link/srb2-preservation/srb2-legacy/workflows/ios/next)
 
 ## Interact
 - Join the [srb2-preservation Matrix space](https://matrix.to/#/#srb2-preservation:merrycorps.xyz)
