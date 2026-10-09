@@ -10,7 +10,7 @@
     return vers.join('');
   }
   // 300000 -> "30.0.0"
-  var packedVersionToHumanReadable = n => [n / 10000 | 0, (n / 100 | 0) % 100, n % 100].join('.');
+  var packedVersionToHumanReadable = n => [n / 10_000 | 0, (n / 100 | 0) % 100, n % 100].join('.');
 
   var TARGET_NOT_SUPPORTED = 2147483647;
 
@@ -1291,17 +1291,8 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           var buf = Buffer.alloc(BUFSIZE);
           var bytesRead = 0;
   
-          // For some reason we must suppress a closure warning here, even though
-          // fd definitely exists on process.stdin, and is even the proper way to
-          // get the fd of stdin,
-          // https://github.com/nodejs/help/issues/2136#issuecomment-523649904
-          // This started to happen after moving this logic out of library_tty.js,
-          // so it is related to the surrounding code in some unclear manner.
-          /** @suppress {missingProperties} */
-          var fd = process.stdin.fd;
-  
           try {
-            bytesRead = fs.readSync(fd, buf, 0, BUFSIZE);
+            bytesRead = fs.readSync(process.stdin.fd, buf, 0, BUFSIZE);
           } catch(e) {
             // Cross-platform differences: on Windows, reading EOF throws an
             // exception, but on other OSes, reading EOF returns 0. Uniformize
@@ -1311,7 +1302,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           }
   
           if (bytesRead > 0) {
-            result = buf.slice(0, bytesRead).toString('utf-8');
+            result = buf.toString('utf-8', 0, bytesRead);
           }
         } else
         if (globalThis.window?.prompt) {
@@ -1484,7 +1475,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   mount(mount) {
         return MEMFS.createNode(null, '/', 16895, 0);
       },
-  createNode(parent, name, mode, dev) {
+  createNode(parent, name, mode, dev = undefined) {
         if (FS.isBlkdev(mode) || FS.isFIFO(mode)) {
           // not supported
           throw new FS.ErrnoError(63);
@@ -1615,6 +1606,11 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           attr.atime = new Date(node.atime);
           attr.mtime = new Date(node.mtime);
           attr.ctime = new Date(node.ctime);
+          // A Date only holds whole milliseconds: also return the exact times
+          // (e.g. as set by utimensat), which SYSCALLS.writeStat prefers.
+          attr.atimeMs = node.atime;
+          attr.mtimeMs = node.mtime;
+          attr.ctimeMs = node.ctime;
           // NOTE: In our implementation, st_blocks = Math.ceil(st_size/st_blksize),
           //       but this is not required by the standard.
           attr.blksize = 4096;
@@ -1634,7 +1630,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   lookup(parent, name) {
           throw new FS.ErrnoError(44);
         },
-  mknod(parent, name, mode, dev) {
+  mknod(parent, name, mode, dev = undefined) {
           return MEMFS.createNode(parent, name, mode, dev);
         },
   rename(old_node, new_dir, new_name) {
@@ -1642,14 +1638,11 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           try {
             new_node = FS.lookupNode(new_dir, new_name);
           } catch (e) {}
-          if (new_node) {
-            if (FS.isDir(old_node.mode)) {
-              // if we're overwriting a directory at new_name, make sure it's empty.
-              for (var i in new_node.contents) {
-                throw new FS.ErrnoError(55);
-              }
+          if (new_node && FS.isDir(old_node.mode)) {
+            // if we're overwriting a directory at new_name, make sure it's empty.
+            for (var i in new_node.contents) {
+              throw new FS.ErrnoError(55);
             }
-            FS.hashRemoveNode(new_node);
           }
           // do the internal rewiring
           delete old_node.parent.contents[old_node.name];
@@ -2321,6 +2314,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       'ESTRPIPE': 135,
     };
   
+  
   var asyncLoad = async (url) => {
       var arrayBuffer = await readAsync(url);
       assert(arrayBuffer, `Loading data file "${url}" failed (no arrayBuffer).`);
@@ -2399,7 +2393,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           if (shown) {
             err('(end of list)');
           }
-        }, 10000);
+        }, 10_000);
         // Prevent this timer from keeping the runtime alive if nothing
         // else is.
         runDependencyWatcher.unref?.()
@@ -2455,7 +2449,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   },
   streams:[],
   nextInode:1,
-  nameTable:null,
+  nameTable:[],
   currentPath:"/",
   initialized:false,
   ignorePermissions:true,
@@ -2724,7 +2718,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         // if we failed to find it in the cache, call into the VFS
         return FS.lookup(parent, name);
       },
-  createNode(parent, name, mode, rdev) {
+  createNode(parent, name, mode, rdev = undefined) {
         assert(typeof parent == 'object')
         var node = new FS.FSNode(parent, name, mode, rdev);
   
@@ -3099,9 +3093,9 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         var rtn = {
           bsize: 4096,
           frsize: 4096,
-          blocks: 1e6,
-          bfree: 5e5,
-          bavail: 5e5,
+          blocks: 1_000_000,
+          bfree: 500_000,
+          bavail: 500_000,
           files: FS.nextInode,
           ffree: FS.nextInode - 1,
           fsid: 42,
@@ -3124,7 +3118,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         mode |= 16384;
         return FS.mknod(path, mode, 0);
       },
-  mkdirTree(path, mode) {
+  mkdirTree(path, mode = 0o777) {
         var dirs = path.split('/');
         var d = '';
         for (var dir of dirs) {
@@ -3138,7 +3132,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           }
         }
       },
-  mkdev(path, mode, dev) {
+  mkdev(path, mode, dev = undefined) {
         if (typeof dev == 'undefined') {
           dev = mode;
           mode = 0o666;
@@ -3258,6 +3252,11 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         // do the underlying fs rename
         try {
           old_dir.node_ops.rename(old_node, new_dir, new_name);
+          // The replaced node is stale now. Evict it only after the rename
+          // succeeded: backends like NODEFS report node.id as st_ino.
+          if (new_node) {
+            FS.hashRemoveNode(new_node);
+          }
           // update old node (we do this here to avoid each backend
           // needing to)
           old_node.parent = new_dir;
@@ -3328,7 +3327,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         }
         return link.node_ops.readlink(link);
       },
-  stat(path, dontFollow) {
+  stat(path, dontFollow = false) {
         var lookup = FS.lookupPath(path, { follow: !dontFollow });
         var node = lookup.node;
         var getattr = FS.checkOpExists(node.node_ops.getattr, 63);
@@ -3346,14 +3345,14 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   lstat(path) {
         return FS.stat(path, true);
       },
-  doChmod(stream, node, mode, dontFollow) {
+  doChmod(stream, node, mode, dontFollow = false) {
         FS.doSetAttr(stream, node, {
           mode: (mode & 4095) | (node.mode & ~4095),
           ctime: Date.now(),
           dontFollow
         });
       },
-  chmod(path, mode, dontFollow) {
+  chmod(path, mode, dontFollow = false) {
         var node;
         if (typeof path == 'string') {
           var lookup = FS.lookupPath(path, { follow: !dontFollow });
@@ -3370,14 +3369,14 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         var stream = FS.getStreamChecked(fd);
         FS.doChmod(stream, stream.node, mode, false);
       },
-  doChown(stream, node, dontFollow) {
+  doChown(stream, node, dontFollow = false) {
         FS.doSetAttr(stream, node, {
           timestamp: Date.now(),
           dontFollow
           // we ignore the uid / gid for now
         });
       },
-  chown(path, uid, gid, dontFollow) {
+  chown(path, uid, gid, dontFollow = false) {
         var node;
         if (typeof path == 'string') {
           var lookup = FS.lookupPath(path, { follow: !dontFollow });
@@ -3430,7 +3429,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         }
         FS.doTruncate(stream, stream.node, len);
       },
-  utime(path, atime, mtime, dontFollow) {
+  utime(path, atime, mtime, dontFollow = false) {
         var lookup = FS.lookupPath(path, { follow: !dontFollow });
         FS.doSetAttr(null, lookup.node, {
           atime: atime,
@@ -3569,7 +3568,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         stream.ungotten = [];
         return stream.position;
       },
-  read(stream, buffer, offset, length, position) {
+  read(stream, buffer, offset, length, position = undefined) {
         assert(offset >= 0);
         if (length < 0 || position < 0) {
           throw new FS.ErrnoError(28);
@@ -3596,7 +3595,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         if (!seeking) stream.position += bytesRead;
         return bytesRead;
       },
-  write(stream, buffer, offset, length, position, canOwn) {
+  write(stream, buffer, offset, length, position = undefined, canOwn = undefined) {
         assert(offset >= 0);
         assert(buffer.subarray, 'FS.write expects a TypedArray');
         if (length < 0 || position < 0) {
@@ -3665,8 +3664,8 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         return stream.stream_ops.ioctl(stream, cmd, arg);
       },
   readFile(path, opts = {}) {
-        opts.flags = opts.flags ?? 0;
-        opts.encoding = opts.encoding ?? 'binary';
+        opts.flags ??= 0;
+        opts.encoding ??= 'binary';
         if (opts.encoding !== 'utf8' && opts.encoding !== 'binary') {
           abort(`Invalid encoding type "${opts.encoding}"`);
         }
@@ -3682,7 +3681,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         return buf;
       },
   writeFile(path, data, opts = {}) {
-        opts.flags = opts.flags ?? 577;
+        opts.flags ??= 577;
         var stream = FS.open(path, opts.flags, opts.mode);
         data = FS_fileDataToTypedArray(data);
         FS.write(stream, data, 0, data.byteLength, undefined, opts.canOwn);
@@ -3811,7 +3810,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         assert(stderr.fd === 2, `invalid handle for stderr (${stderr.fd})`);
       },
   staticInit() {
-        FS.nameTable = new Array(4096);
+        FS.nameTable.length = 4096;
   
         FS.mount(MEMFS, {}, '/');
   
@@ -3824,7 +3823,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           'IDBFS': IDBFS,
         };
       },
-  init(input, output, error) {
+  init(input = undefined, output = undefined, error = undefined) {
         assert(!FS.initialized, 'FS.init was previously called. If you want to initialize later with custom parameters, remove any earlier calls (note that one is automatically added to the generated code)');
         FS.initialized = true;
   
@@ -3846,14 +3845,8 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           }
         }
       },
-  findObject(path, dontResolveLastLink) {
-        var ret = FS.analyzePath(path, dontResolveLastLink);
-        if (!ret.exists) {
-          return null;
-        }
-        return ret.object;
-      },
-  analyzePath(path, dontResolveLastLink) {
+  analyzePath(path, dontResolveLastLink = false) {
+        warnOnce('FS.analyzePath is deprecated; use FS.lookupPath or FS.stat instead');
         // operate from within the context of the symlink's target
         try {
           var lookup = FS.lookupPath(path, { follow: !dontResolveLastLink });
@@ -3881,7 +3874,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         };
         return ret;
       },
-  createPath(parent, path, canRead, canWrite) {
+  createPath(parent, path, canRead = undefined, canWrite = undefined) {
         parent = typeof parent == 'string' ? parent : FS.getPath(parent);
         var parts = path.split('/').reverse();
         while (parts.length) {
@@ -3897,12 +3890,12 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         }
         return current;
       },
-  createFile(parent, name, properties, canRead, canWrite) {
+  createFile(parent, name, properties, canRead = undefined, canWrite = undefined) {
         var path = PATH.join2(typeof parent == 'string' ? parent : FS.getPath(parent), name);
         var mode = FS_getMode(canRead, canWrite);
         return FS.create(path, mode);
       },
-  createDataFile(parent, name, data, canRead, canWrite, canOwn) {
+  createDataFile(parent, name, data = undefined, canRead = undefined, canWrite = undefined, canOwn = undefined) {
         var path = name;
         if (parent) {
           parent = typeof parent == 'string' ? parent : FS.getPath(parent);
@@ -3920,7 +3913,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           FS.chmod(node, mode);
         }
       },
-  createDevice(parent, name, input, output) {
+  createDevice(parent, name, input = undefined, output = undefined) {
         var path = PATH.join2(typeof parent == 'string' ? parent : FS.getPath(parent), name);
         var mode = FS_getMode(!!input, !!output);
         FS.createDevice.major ??= 64;
@@ -3986,7 +3979,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           }
         }
       },
-  createLazyFile(parent, name, url, canRead, canWrite) {
+  createLazyFile(parent, name, url, canRead = undefined, canWrite = undefined) {
         // Lazy chunked Uint8Array (implements get and length from Uint8Array).
         // Actual getting is abstracted away for eventual reuse.
         class LazyUint8Array {
@@ -4156,7 +4149,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   var HEAP64;
   var SYSCALLS = {
   currentUmask:18,
-  calculateAt(dirfd, path, allowEmpty) {
+  calculateAt(dirfd, path, allowEmpty = false) {
         if (PATH.isAbs(path)) {
           return path;
         }
@@ -4186,15 +4179,18 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         HEAP64[(((buf)+(24))>>3)] = BigInt(stat.size);checkInt64(stat.size);
         HEAP32[(((buf)+(32))>>2)] = 4096;checkInt32(4096);
         HEAP32[(((buf)+(36))>>2)] = stat.blocks;checkInt32(stat.blocks);
-        var atime = stat.atime.getTime();
-        var mtime = stat.mtime.getTime();
-        var ctime = stat.ctime.getTime();
+        // Prefer `*Ms` properties if available (e.g. from MEMFS, or NODEFS / host
+        // `fs.Stats`) for sub-millisecond precision; fall back to Date#getTime for
+        // other filesystems.
+        var atime = stat.atimeMs ?? stat.atime.getTime();
+        var mtime = stat.mtimeMs ?? stat.mtime.getTime();
+        var ctime = stat.ctimeMs ?? stat.ctime.getTime();
         HEAP64[(((buf)+(40))>>3)] = BigInt(Math.floor(atime / 1000));checkInt64(Math.floor(atime / 1000));
-        HEAPU32[(((buf)+(48))>>2)] = (atime % 1000) * 1000 * 1000;checkInt32((atime % 1000) * 1000 * 1000);
+        HEAPU32[(((buf)+(48))>>2)] = Math.floor((atime % 1000) * 1_000_000);checkInt32(Math.floor((atime % 1000) * 1_000_000));
         HEAP64[(((buf)+(56))>>3)] = BigInt(Math.floor(mtime / 1000));checkInt64(Math.floor(mtime / 1000));
-        HEAPU32[(((buf)+(64))>>2)] = (mtime % 1000) * 1000 * 1000;checkInt32((mtime % 1000) * 1000 * 1000);
+        HEAPU32[(((buf)+(64))>>2)] = Math.floor((mtime % 1000) * 1_000_000);checkInt32(Math.floor((mtime % 1000) * 1_000_000));
         HEAP64[(((buf)+(72))>>3)] = BigInt(Math.floor(ctime / 1000));checkInt64(Math.floor(ctime / 1000));
-        HEAPU32[(((buf)+(80))>>2)] = (ctime % 1000) * 1000 * 1000;checkInt32((ctime % 1000) * 1000 * 1000);
+        HEAPU32[(((buf)+(80))>>2)] = Math.floor((ctime % 1000) * 1_000_000);checkInt32(Math.floor((ctime % 1000) * 1_000_000));
         HEAP64[(((buf)+(88))>>3)] = BigInt(stat.ino);checkInt64(stat.ino);
         return 0;
       },
@@ -4555,7 +4551,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       path = SYSCALLS.getStr(path);
       path = SYSCALLS.calculateAt(dirfd, path);
       mode &= ~SYSCALLS.currentUmask;
-      FS.mkdir(path, mode, 0);
+      FS.mkdir(path, mode);
       return 0;
     } catch (e) {
     if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
@@ -4776,7 +4772,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         var nonDstOffset = Math.max(winterOffset, summerOffset);
         var trueOffset = dst > 0 ? dstOffset : nonDstOffset;
         // Don't try setMinutes(date.getMinutes() + ...) -- it's messed up.
-        date.setTime(date.getTime() + (trueOffset - guessedOffset)*60000);
+        date.setTime(date.getTime() + (trueOffset - guessedOffset)*60_000);
         if (isNaN(date.getTime())) {
           return -1;
         }
@@ -4865,13 +4861,13 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         }
       }
     };
-  var callUserCallback = (func) => {
+  var callUserCallback = (func, ...args) => {
       if (ABORT) {
         err('user callback triggered after runtime exited or application aborted.  Ignoring.');
         return;
       }
       try {
-        return func();
+        return func(...args);
       } catch (e) {
         handleException(e);
       } finally {
@@ -4895,7 +4891,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       var id = setTimeout(() => {
         assert(which in timers);
         delete timers[which];
-        callUserCallback(() => __emscripten_timeout(which, _emscripten_get_now()));
+        callUserCallback(__emscripten_timeout, which, _emscripten_get_now());
       }, timeout_ms);
       timers[which] = { id, timeout_ms };
       return 0;
@@ -4982,29 +4978,30 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         return 52;
       }
       // "now" is in ms, and wasi times are in ns.
-      var nsec = Math.round(now * 1000 * 1000);
+      var nsec = Math.round(now * 1_000_000);
       HEAP64[((ptime)>>3)] = BigInt(nsec);checkInt64(nsec);
       return 0;
     ;
   }
 
-  
   function getFullscreenElement() {
       return document.fullscreenElement
              ?? document.webkitFullscreenElement
              ;
     }
   
+  
   /** @param {number=} timeout */
   var safeSetTimeout = (func, timeout) => {
       
-      return setTimeout(() => {
+      var id = safeSetTimeout.nextId++;
+      safeSetTimeout.pending.set(id, setTimeout(() => {
+        safeSetTimeout.pending.delete(id);
         
         callUserCallback(func);
-      }, timeout);
+      }, timeout));
+      return id;
     };
-  
-  
   
   
   
@@ -5114,7 +5111,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
             // workaround for chrome bug 124926 - we do not always get oncanplaythrough or onerror
             safeSetTimeout(() => {
               finish(audio); // try to use it even though it is not necessarily ready to play
-            }, 10000);
+            }, 10_000);
           });
         };
         preloadPlugins.push(audioPlugin);
@@ -5253,12 +5250,6 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         CFS.apply(document, []);
         return true;
       },
-  safeSetTimeout(func, timeout) {
-        // Legacy function, this is used by the SDL2 port so we need to keep it
-        // around at least until that is updated.
-        // See https://github.com/libsdl-org/SDL/pull/6304
-        return safeSetTimeout(func, timeout);
-      },
   getMimetype(name) {
         return {
           'jpg': 'image/jpeg',
@@ -5269,9 +5260,6 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           'wav': 'audio/wav',
           'mp3': 'audio/mpeg'
         }[name.slice(name.lastIndexOf('.')+1)];
-      },
-  getUserMedia(func) {
-        return navigator.mediaDevices.getUserMedia(func);
       },
   getMouseWheelDelta(event) {
         var delta = 0;
@@ -5384,13 +5372,11 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         Browser.updateCanvasDimensions(canvas, width, height);
         if (!noUpdates) Browser.updateResizeListeners();
       },
-  windowedWidth:0,
-  windowedHeight:0,
   setFullscreenCanvasSize() {
         // check if SDL is available
         if (typeof SDL != 'undefined') {
           var flags = HEAPU32[((SDL.screen)>>2)];
-          flags = flags | 0x00800000; // set SDL_FULLSCREEN flag
+          flags = flags | 8388608;
           HEAP32[((SDL.screen)>>2)] = flags;checkInt32(flags);
         }
         Browser.updateCanvasDimensions(Browser.getCanvas());
@@ -5400,7 +5386,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         // check if SDL is available
         if (typeof SDL != 'undefined') {
           var flags = HEAPU32[((SDL.screen)>>2)];
-          flags = flags & ~0x00800000; // clear SDL_FULLSCREEN flag
+          flags = flags & ~8388608;
           HEAP32[((SDL.screen)>>2)] = flags;checkInt32(flags);
         }
         Browser.updateCanvasDimensions(Browser.getCanvas());
@@ -5691,7 +5677,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         // version field in above check.
         if (!canvas.getContextSafariWebGL2Fixed) {
           canvas.getContextSafariWebGL2Fixed = canvas.getContext;
-          /** @type {function(this:HTMLCanvasElement, string, (Object|null)=): (Object|null)} */
+          /** @type {function(this:HTMLCanvasElement, string, (Object|null)=): (RenderingContext|null)} */
           function fixedGetContext(ver, attrs) {
             var gl = canvas.getContextSafariWebGL2Fixed(ver, attrs);
             return ((ver == 'webgl') == (gl instanceof WebGLRenderingContext)) ? gl : null;
@@ -6452,7 +6438,14 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       MainLoop.func = null;
     };
 
-  var _emscripten_clear_timeout = clearTimeout;
+  var safeClearTimeout = (id) => {
+      var handle = safeSetTimeout.pending.get(id);
+      if (!handle) return;
+      safeSetTimeout.pending.delete(id);
+      clearTimeout(handle);
+      
+    };
+  var _emscripten_clear_timeout = safeClearTimeout;
 
 
   var onExits = [];
@@ -6970,8 +6963,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   var _emscripten_glBindVertexArray = (vao) => {
       GLctx.bindVertexArray(GL.vaos[vao]);
     };
-  var _glBindVertexArray = _emscripten_glBindVertexArray;
-  var _emscripten_glBindVertexArrayOES = _glBindVertexArray;
+  var _emscripten_glBindVertexArrayOES = _emscripten_glBindVertexArray;
 
   var _emscripten_glBlendColor = (x0, x1, x2, x3) => GLctx.blendColor(x0, x1, x2, x3);
 
@@ -7165,8 +7157,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         GL.vaos[id] = null;
       }
     };
-  var _glDeleteVertexArrays = _emscripten_glDeleteVertexArrays;
-  var _emscripten_glDeleteVertexArraysOES = _glDeleteVertexArrays;
+  var _emscripten_glDeleteVertexArraysOES = _emscripten_glDeleteVertexArrays;
 
   var _emscripten_glDepthFunc = (x0) => GLctx.depthFunc(x0);
 
@@ -7196,8 +7187,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   var _emscripten_glDrawArraysInstanced = (mode, first, count, primcount) => {
       GLctx.drawArraysInstanced(mode, first, count, primcount);
     };
-  var _glDrawArraysInstanced = _emscripten_glDrawArraysInstanced;
-  var _emscripten_glDrawArraysInstancedANGLE = _glDrawArraysInstanced;
+  var _emscripten_glDrawArraysInstancedANGLE = _emscripten_glDrawArraysInstanced;
 
   
   var tempFixedLengthArray = [];
@@ -7212,8 +7202,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   
       GLctx.drawBuffers(bufArray);
     };
-  var _glDrawBuffers = _emscripten_glDrawBuffers;
-  var _emscripten_glDrawBuffersWEBGL = _glDrawBuffers;
+  var _emscripten_glDrawBuffersWEBGL = _emscripten_glDrawBuffers;
 
   
   var _emscripten_glDrawElements = (mode, count, type, indices) => {
@@ -7226,8 +7215,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   var _emscripten_glDrawElementsInstanced = (mode, count, type, indices, primcount) => {
       GLctx.drawElementsInstanced(mode, count, type, indices, primcount);
     };
-  var _glDrawElementsInstanced = _emscripten_glDrawElementsInstanced;
-  var _emscripten_glDrawElementsInstancedANGLE = _glDrawElementsInstanced;
+  var _emscripten_glDrawElementsInstancedANGLE = _emscripten_glDrawElementsInstanced;
 
   var _emscripten_glEnable = (x0) => GLctx.enable(x0);
 
@@ -7296,8 +7284,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       GL.genObject(n, arrays, 'createVertexArray', GL.vaos
         );
     };
-  var _glGenVertexArrays = _emscripten_glGenVertexArrays;
-  var _emscripten_glGenVertexArraysOES = _glGenVertexArrays;
+  var _emscripten_glGenVertexArraysOES = _emscripten_glGenVertexArrays;
 
   var _emscripten_glGenerateMipmap = (x0) => GLctx.generateMipmap(x0);
 
@@ -7606,12 +7593,10 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
     };
 
   
-  var _glGetQueryObjecti64vEXT = _emscripten_glGetQueryObjecti64vEXT;
-  var _emscripten_glGetQueryObjectui64vEXT = _glGetQueryObjecti64vEXT;
+  var _emscripten_glGetQueryObjectui64vEXT = _emscripten_glGetQueryObjecti64vEXT;
 
   
-  var _glGetQueryObjectivEXT = _emscripten_glGetQueryObjectivEXT;
-  var _emscripten_glGetQueryObjectuivEXT = _glGetQueryObjectivEXT;
+  var _emscripten_glGetQueryObjectuivEXT = _emscripten_glGetQueryObjectivEXT;
 
   
   var _emscripten_glGetQueryivEXT = (target, pname, params) => {
@@ -8032,8 +8017,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       if (!vao) return 0;
       return GLctx.isVertexArray(vao);
     };
-  var _glIsVertexArray = _emscripten_glIsVertexArray;
-  var _emscripten_glIsVertexArrayOES = _glIsVertexArray;
+  var _emscripten_glIsVertexArrayOES = _emscripten_glIsVertexArray;
 
   var _emscripten_glLineWidth = (x0) => GLctx.lineWidth(x0);
 
@@ -8553,8 +8537,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   var _emscripten_glVertexAttribDivisor = (index, divisor) => {
       GLctx.vertexAttribDivisor(index, divisor);
     };
-  var _glVertexAttribDivisor = _emscripten_glVertexAttribDivisor;
-  var _emscripten_glVertexAttribDivisorANGLE = _glVertexAttribDivisor;
+  var _emscripten_glVertexAttribDivisorANGLE = _emscripten_glVertexAttribDivisor;
 
   var _emscripten_glVertexAttribPointer = (index, size, type, normalized, stride, ptr) => {
       GLctx.vertexAttribPointer(index, size, type, !!normalized, stride, ptr);
@@ -9863,7 +9846,9 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
           _free(Asyncify.currData);
           Asyncify.currData = null;
           // Call all sleep callbacks now that the sleep-resume is all done.
-          Asyncify.sleepCallbacks.forEach(callUserCallback);
+          for (var cb of Asyncify.sleepCallbacks) {
+            callUserCallback(cb);
+          }
         } else {
           abort(`invalid state: ${Asyncify.state}`);
         }
@@ -10026,11 +10011,10 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
 
 
 
-  var createContext = Browser.createContext;
-
   FS.createPreloadedFile = FS_createPreloadedFile;
   FS.preloadFile = FS_preloadFile;
   FS.staticInit();;
+safeSetTimeout.pending = new Map(); safeSetTimeout.nextId = 1;;
 
       Module['requestAnimationFrame'] = MainLoop.requestAnimationFrame;
       Module['pauseMainLoop'] = MainLoop.pause;
@@ -10104,7 +10088,6 @@ if (Module['printErr']) err = Module['printErr'];
   Module['stringToUTF8'] = stringToUTF8;
   Module['lengthBytesUTF8'] = lengthBytesUTF8;
   Module['intArrayFromString'] = intArrayFromString;
-  Module['createContext'] = createContext;
   Module['FS'] = FS;
   var missingLibrarySymbols = [
   'writeI53ToI64Clamped',
@@ -10236,7 +10219,6 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'strError',
   'DNS',
   'Protocols',
-  'Sockets',
   'timers',
   'warnOnce',
   'readEmAsmArgsArray',
@@ -10319,8 +10301,8 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'initRandomFill',
   'randomFill',
   'safeSetTimeout',
+  'safeClearTimeout',
   'emSetImmediate',
-  'emClearImmediate_deps',
   'emClearImmediate',
   'promiseMap',
   'uncaughtExceptionCount',
@@ -10329,8 +10311,7 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'Browser',
   'requestFullscreen',
   'setCanvasSize',
-  'getUserMedia',
-  'getPreloadedImageData__data',
+  'createContext',
   'wget',
   'MONTH_DAYS_REGULAR',
   'MONTH_DAYS_LEAP',
@@ -10451,7 +10432,6 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'FS_staticInit',
   'FS_init',
   'FS_quit',
-  'FS_findObject',
   'FS_analyzePath',
   'FS_createFile',
   'FS_createDataFile',
@@ -10536,25 +10516,25 @@ function checkIncomingModuleAPI() {
   ignoredModuleProp('wasmBinary');
 }
 var ASM_CONSTS = {
-  1376068: ($0) => { var str = UTF8ToString($0) + '\n\n' + 'Abort/Retry/Ignore/AlwaysIgnore? [ariA] :'; var reply = window.prompt(str, "i"); if (reply === null) { reply = "i"; } return reply.length === 1 ? reply.charCodeAt(0) : -1; },  
- 1376283: () => { if (typeof(AudioContext) !== 'undefined') { return true; } else if (typeof(webkitAudioContext) !== 'undefined') { return true; } return false; },  
- 1376430: () => { if ((typeof(navigator.mediaDevices) !== 'undefined') && (typeof(navigator.mediaDevices.getUserMedia) !== 'undefined')) { return true; } else if (typeof(navigator.webkitGetUserMedia) !== 'undefined') { return true; } return false; },  
- 1376664: ($0) => { if(typeof(Module['SDL2']) === 'undefined') { Module['SDL2'] = {}; } var SDL2 = Module['SDL2']; if (!$0) { SDL2.audio = {}; } else { SDL2.capture = {}; } if (!SDL2.audioContext) { if (typeof(AudioContext) !== 'undefined') { SDL2.audioContext = new AudioContext(); } else if (typeof(webkitAudioContext) !== 'undefined') { SDL2.audioContext = new webkitAudioContext(); } if (SDL2.audioContext) { if ((typeof navigator.userActivation) === 'undefined') { autoResumeAudioContext(SDL2.audioContext); } } } return SDL2.audioContext === undefined ? -1 : 0; },  
- 1377216: () => { var SDL2 = Module['SDL2']; return SDL2.audioContext.sampleRate; },  
- 1377284: ($0, $1, $2, $3) => { var SDL2 = Module['SDL2']; var have_microphone = function(stream) { if (SDL2.capture.silenceTimer !== undefined) { clearInterval(SDL2.capture.silenceTimer); SDL2.capture.silenceTimer = undefined; SDL2.capture.silenceBuffer = undefined } SDL2.capture.mediaStreamNode = SDL2.audioContext.createMediaStreamSource(stream); SDL2.capture.scriptProcessorNode = SDL2.audioContext.createScriptProcessor($1, $0, 1); SDL2.capture.scriptProcessorNode.onaudioprocess = function(audioProcessingEvent) { if ((SDL2 === undefined) || (SDL2.capture === undefined)) { return; } audioProcessingEvent.outputBuffer.getChannelData(0).fill(0.0); SDL2.capture.currentCaptureBuffer = audioProcessingEvent.inputBuffer; dynCall('vp', $2, [$3]); }; SDL2.capture.mediaStreamNode.connect(SDL2.capture.scriptProcessorNode); SDL2.capture.scriptProcessorNode.connect(SDL2.audioContext.destination); SDL2.capture.stream = stream; }; var no_microphone = function(error) { }; SDL2.capture.silenceBuffer = SDL2.audioContext.createBuffer($0, $1, SDL2.audioContext.sampleRate); SDL2.capture.silenceBuffer.getChannelData(0).fill(0.0); var silence_callback = function() { SDL2.capture.currentCaptureBuffer = SDL2.capture.silenceBuffer; dynCall('vp', $2, [$3]); }; SDL2.capture.silenceTimer = setInterval(silence_callback, ($1 / SDL2.audioContext.sampleRate) * 1000); if ((navigator.mediaDevices !== undefined) && (navigator.mediaDevices.getUserMedia !== undefined)) { navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(have_microphone).catch(no_microphone); } else if (navigator.webkitGetUserMedia !== undefined) { navigator.webkitGetUserMedia({ audio: true, video: false }, have_microphone, no_microphone); } },  
- 1378977: ($0, $1, $2, $3) => { var SDL2 = Module['SDL2']; SDL2.audio.scriptProcessorNode = SDL2.audioContext['createScriptProcessor']($1, 0, $0); SDL2.audio.scriptProcessorNode['onaudioprocess'] = function (e) { if ((SDL2 === undefined) || (SDL2.audio === undefined)) { return; } if (SDL2.audio.silenceTimer !== undefined) { clearInterval(SDL2.audio.silenceTimer); SDL2.audio.silenceTimer = undefined; SDL2.audio.silenceBuffer = undefined; } SDL2.audio.currentOutputBuffer = e['outputBuffer']; dynCall('vp', $2, [$3]); }; SDL2.audio.scriptProcessorNode['connect'](SDL2.audioContext['destination']); if (SDL2.audioContext.state === 'suspended') { SDL2.audio.silenceBuffer = SDL2.audioContext.createBuffer($0, $1, SDL2.audioContext.sampleRate); SDL2.audio.silenceBuffer.getChannelData(0).fill(0.0); var silence_callback = function() { if ((typeof navigator.userActivation) !== 'undefined') { if (navigator.userActivation.hasBeenActive) { SDL2.audioContext.resume(); } } SDL2.audio.currentOutputBuffer = SDL2.audio.silenceBuffer; dynCall('vp', $2, [$3]); SDL2.audio.currentOutputBuffer = undefined; }; SDL2.audio.silenceTimer = setInterval(silence_callback, ($1 / SDL2.audioContext.sampleRate) * 1000); } },  
- 1380152: ($0, $1) => { var SDL2 = Module['SDL2']; var numChannels = SDL2.capture.currentCaptureBuffer.numberOfChannels; for (var c = 0; c < numChannels; ++c) { var channelData = SDL2.capture.currentCaptureBuffer.getChannelData(c); if (channelData.length != $1) { throw 'Web Audio capture buffer length mismatch! Destination size: ' + channelData.length + ' samples vs expected ' + $1 + ' samples!'; } if (numChannels == 1) { for (var j = 0; j < $1; ++j) { setValue($0 + (j * 4), channelData[j], 'float'); } } else { for (var j = 0; j < $1; ++j) { setValue($0 + (((j * numChannels) + c) * 4), channelData[j], 'float'); } } } },  
- 1380757: ($0, $1) => { var SDL2 = Module['SDL2']; var buf = $0 >>> 2; var numChannels = SDL2.audio.currentOutputBuffer['numberOfChannels']; for (var c = 0; c < numChannels; ++c) { var channelData = SDL2.audio.currentOutputBuffer['getChannelData'](c); if (channelData.length != $1) { throw 'Web Audio output buffer length mismatch! Destination size: ' + channelData.length + ' samples vs expected ' + $1 + ' samples!'; } for (var j = 0; j < $1; ++j) { channelData[j] = HEAPF32[buf + (j*numChannels + c)]; } } },  
- 1381246: ($0) => { var SDL2 = Module['SDL2']; if ($0) { if (SDL2.capture.silenceTimer !== undefined) { clearInterval(SDL2.capture.silenceTimer); } if (SDL2.capture.stream !== undefined) { var tracks = SDL2.capture.stream.getAudioTracks(); for (var i = 0; i < tracks.length; i++) { SDL2.capture.stream.removeTrack(tracks[i]); } } if (SDL2.capture.scriptProcessorNode !== undefined) { SDL2.capture.scriptProcessorNode.onaudioprocess = function(audioProcessingEvent) {}; SDL2.capture.scriptProcessorNode.disconnect(); } if (SDL2.capture.mediaStreamNode !== undefined) { SDL2.capture.mediaStreamNode.disconnect(); } SDL2.capture = undefined; } else { if (SDL2.audio.scriptProcessorNode != undefined) { SDL2.audio.scriptProcessorNode.disconnect(); } if (SDL2.audio.silenceTimer !== undefined) { clearInterval(SDL2.audio.silenceTimer); } SDL2.audio = undefined; } if ((SDL2.audioContext !== undefined) && (SDL2.audio === undefined) && (SDL2.capture === undefined)) { SDL2.audioContext.close(); SDL2.audioContext = undefined; } },  
- 1382252: ($0) => { window.open(UTF8ToString($0), "_blank") },  
- 1382292: ($0, $1) => { alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1)); },  
- 1382349: () => { return window.innerWidth; },  
- 1382379: () => { return window.innerHeight; },  
- 1382410: ($0, $1, $2) => { var w = $0; var h = $1; var pixels = $2; if (!Module['SDL2']) Module['SDL2'] = {}; var SDL2 = Module['SDL2']; if (SDL2.ctxCanvas !== Module['canvas']) { SDL2.ctx = Browser.createContext(Module['canvas'], false, true); SDL2.ctxCanvas = Module['canvas']; } if (SDL2.w !== w || SDL2.h !== h || SDL2.imageCtx !== SDL2.ctx) { SDL2.image = SDL2.ctx.createImageData(w, h); SDL2.w = w; SDL2.h = h; SDL2.imageCtx = SDL2.ctx; } var data = SDL2.image.data; var src = pixels / 4; var dst = 0; var num; if (typeof CanvasPixelArray !== 'undefined' && data instanceof CanvasPixelArray) { num = data.length; while (dst < num) { var val = HEAP32[src]; data[dst ] = val & 0xff; data[dst+1] = (val >> 8) & 0xff; data[dst+2] = (val >> 16) & 0xff; data[dst+3] = 0xff; src++; dst += 4; } } else { if (SDL2.data32Data !== data) { SDL2.data32 = new Int32Array(data.buffer); SDL2.data8 = new Uint8Array(data.buffer); SDL2.data32Data = data; } var data32 = SDL2.data32; num = data32.length; data32.set(HEAP32.subarray(src, src + num)); var data8 = SDL2.data8; var i = 3; var j = i + 4*num; if (num % 8 == 0) { while (i < j) { data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; } } else { while (i < j) { data8[i] = 0xff; i = i + 4 | 0; } } } SDL2.ctx.putImageData(SDL2.image, 0, 0); },  
- 1383876: ($0, $1, $2, $3, $4) => { var w = $0; var h = $1; var hot_x = $2; var hot_y = $3; var pixels = $4; var canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h; var ctx = canvas.getContext("2d"); var image = ctx.createImageData(w, h); var data = image.data; var src = pixels / 4; var dst = 0; var num; if (typeof CanvasPixelArray !== 'undefined' && data instanceof CanvasPixelArray) { num = data.length; while (dst < num) { var val = HEAP32[src]; data[dst ] = val & 0xff; data[dst+1] = (val >> 8) & 0xff; data[dst+2] = (val >> 16) & 0xff; data[dst+3] = (val >> 24) & 0xff; src++; dst += 4; } } else { var data32 = new Int32Array(data.buffer); num = data32.length; data32.set(HEAP32.subarray(src, src + num)); } ctx.putImageData(image, 0, 0); var url = hot_x === 0 && hot_y === 0 ? "url(" + canvas.toDataURL() + "), auto" : "url(" + canvas.toDataURL() + ") " + hot_x + " " + hot_y + ", auto"; var urlBuf = _malloc(url.length + 1); stringToUTF8(url, urlBuf, url.length + 1); return urlBuf; },  
- 1384864: ($0) => { if (Module['canvas']) { Module['canvas'].style['cursor'] = UTF8ToString($0); } },  
- 1384947: () => { if (Module['canvas']) { Module['canvas'].style['cursor'] = 'none'; } },  
- 1385016: () => { try { StartedMainLoopCallback(); } catch (err) { console.log('Faild to find StartedMainLoopCallback()'); } }
+  1375668: ($0) => { var str = UTF8ToString($0) + '\n\n' + 'Abort/Retry/Ignore/AlwaysIgnore? [ariA] :'; var reply = window.prompt(str, "i"); if (reply === null) { reply = "i"; } return reply.length === 1 ? reply.charCodeAt(0) : -1; },  
+ 1375883: () => { if (typeof(AudioContext) !== 'undefined') { return true; } else if (typeof(webkitAudioContext) !== 'undefined') { return true; } return false; },  
+ 1376030: () => { if ((typeof(navigator.mediaDevices) !== 'undefined') && (typeof(navigator.mediaDevices.getUserMedia) !== 'undefined')) { return true; } else if (typeof(navigator.webkitGetUserMedia) !== 'undefined') { return true; } return false; },  
+ 1376264: ($0) => { if(typeof(Module['SDL2']) === 'undefined') { Module['SDL2'] = {}; } var SDL2 = Module['SDL2']; if (!$0) { SDL2.audio = {}; } else { SDL2.capture = {}; } if (!SDL2.audioContext) { if (typeof(AudioContext) !== 'undefined') { SDL2.audioContext = new AudioContext(); } else if (typeof(webkitAudioContext) !== 'undefined') { SDL2.audioContext = new webkitAudioContext(); } if (SDL2.audioContext) { if ((typeof navigator.userActivation) === 'undefined') { autoResumeAudioContext(SDL2.audioContext); } } } return SDL2.audioContext === undefined ? -1 : 0; },  
+ 1376816: () => { var SDL2 = Module['SDL2']; return SDL2.audioContext.sampleRate; },  
+ 1376884: ($0, $1, $2, $3) => { var SDL2 = Module['SDL2']; var have_microphone = function(stream) { if (SDL2.capture.silenceTimer !== undefined) { clearInterval(SDL2.capture.silenceTimer); SDL2.capture.silenceTimer = undefined; SDL2.capture.silenceBuffer = undefined } SDL2.capture.mediaStreamNode = SDL2.audioContext.createMediaStreamSource(stream); SDL2.capture.scriptProcessorNode = SDL2.audioContext.createScriptProcessor($1, $0, 1); SDL2.capture.scriptProcessorNode.onaudioprocess = function(audioProcessingEvent) { if ((SDL2 === undefined) || (SDL2.capture === undefined)) { return; } audioProcessingEvent.outputBuffer.getChannelData(0).fill(0.0); SDL2.capture.currentCaptureBuffer = audioProcessingEvent.inputBuffer; dynCall('vp', $2, [$3]); }; SDL2.capture.mediaStreamNode.connect(SDL2.capture.scriptProcessorNode); SDL2.capture.scriptProcessorNode.connect(SDL2.audioContext.destination); SDL2.capture.stream = stream; }; var no_microphone = function(error) { }; SDL2.capture.silenceBuffer = SDL2.audioContext.createBuffer($0, $1, SDL2.audioContext.sampleRate); SDL2.capture.silenceBuffer.getChannelData(0).fill(0.0); var silence_callback = function() { SDL2.capture.currentCaptureBuffer = SDL2.capture.silenceBuffer; dynCall('vp', $2, [$3]); }; SDL2.capture.silenceTimer = setInterval(silence_callback, ($1 / SDL2.audioContext.sampleRate) * 1000); if ((navigator.mediaDevices !== undefined) && (navigator.mediaDevices.getUserMedia !== undefined)) { navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(have_microphone).catch(no_microphone); } else if (navigator.webkitGetUserMedia !== undefined) { navigator.webkitGetUserMedia({ audio: true, video: false }, have_microphone, no_microphone); } },  
+ 1378577: ($0, $1, $2, $3) => { var SDL2 = Module['SDL2']; SDL2.audio.scriptProcessorNode = SDL2.audioContext['createScriptProcessor']($1, 0, $0); SDL2.audio.scriptProcessorNode['onaudioprocess'] = function (e) { if ((SDL2 === undefined) || (SDL2.audio === undefined)) { return; } if (SDL2.audio.silenceTimer !== undefined) { clearInterval(SDL2.audio.silenceTimer); SDL2.audio.silenceTimer = undefined; SDL2.audio.silenceBuffer = undefined; } SDL2.audio.currentOutputBuffer = e['outputBuffer']; dynCall('vp', $2, [$3]); }; SDL2.audio.scriptProcessorNode['connect'](SDL2.audioContext['destination']); if (SDL2.audioContext.state === 'suspended') { SDL2.audio.silenceBuffer = SDL2.audioContext.createBuffer($0, $1, SDL2.audioContext.sampleRate); SDL2.audio.silenceBuffer.getChannelData(0).fill(0.0); var silence_callback = function() { if ((typeof navigator.userActivation) !== 'undefined') { if (navigator.userActivation.hasBeenActive) { SDL2.audioContext.resume(); } } SDL2.audio.currentOutputBuffer = SDL2.audio.silenceBuffer; dynCall('vp', $2, [$3]); SDL2.audio.currentOutputBuffer = undefined; }; SDL2.audio.silenceTimer = setInterval(silence_callback, ($1 / SDL2.audioContext.sampleRate) * 1000); } },  
+ 1379752: ($0, $1) => { var SDL2 = Module['SDL2']; var numChannels = SDL2.capture.currentCaptureBuffer.numberOfChannels; for (var c = 0; c < numChannels; ++c) { var channelData = SDL2.capture.currentCaptureBuffer.getChannelData(c); if (channelData.length != $1) { throw 'Web Audio capture buffer length mismatch! Destination size: ' + channelData.length + ' samples vs expected ' + $1 + ' samples!'; } if (numChannels == 1) { for (var j = 0; j < $1; ++j) { setValue($0 + (j * 4), channelData[j], 'float'); } } else { for (var j = 0; j < $1; ++j) { setValue($0 + (((j * numChannels) + c) * 4), channelData[j], 'float'); } } } },  
+ 1380357: ($0, $1) => { var SDL2 = Module['SDL2']; var buf = $0 >>> 2; var numChannels = SDL2.audio.currentOutputBuffer['numberOfChannels']; for (var c = 0; c < numChannels; ++c) { var channelData = SDL2.audio.currentOutputBuffer['getChannelData'](c); if (channelData.length != $1) { throw 'Web Audio output buffer length mismatch! Destination size: ' + channelData.length + ' samples vs expected ' + $1 + ' samples!'; } for (var j = 0; j < $1; ++j) { channelData[j] = HEAPF32[buf + (j*numChannels + c)]; } } },  
+ 1380846: ($0) => { var SDL2 = Module['SDL2']; if ($0) { if (SDL2.capture.silenceTimer !== undefined) { clearInterval(SDL2.capture.silenceTimer); } if (SDL2.capture.stream !== undefined) { var tracks = SDL2.capture.stream.getAudioTracks(); for (var i = 0; i < tracks.length; i++) { SDL2.capture.stream.removeTrack(tracks[i]); } } if (SDL2.capture.scriptProcessorNode !== undefined) { SDL2.capture.scriptProcessorNode.onaudioprocess = function(audioProcessingEvent) {}; SDL2.capture.scriptProcessorNode.disconnect(); } if (SDL2.capture.mediaStreamNode !== undefined) { SDL2.capture.mediaStreamNode.disconnect(); } SDL2.capture = undefined; } else { if (SDL2.audio.scriptProcessorNode != undefined) { SDL2.audio.scriptProcessorNode.disconnect(); } if (SDL2.audio.silenceTimer !== undefined) { clearInterval(SDL2.audio.silenceTimer); } SDL2.audio = undefined; } if ((SDL2.audioContext !== undefined) && (SDL2.audio === undefined) && (SDL2.capture === undefined)) { SDL2.audioContext.close(); SDL2.audioContext = undefined; } },  
+ 1381852: ($0) => { window.open(UTF8ToString($0), "_blank") },  
+ 1381892: ($0, $1) => { alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1)); },  
+ 1381949: () => { return window.innerWidth; },  
+ 1381979: () => { return window.innerHeight; },  
+ 1382010: ($0, $1, $2) => { var w = $0; var h = $1; var pixels = $2; if (!Module['SDL2']) Module['SDL2'] = {}; var SDL2 = Module['SDL2']; if (SDL2.ctxCanvas !== Module['canvas']) { SDL2.ctx = Browser.createContext(Module['canvas'], false, true); SDL2.ctxCanvas = Module['canvas']; } if (SDL2.w !== w || SDL2.h !== h || SDL2.imageCtx !== SDL2.ctx) { SDL2.image = SDL2.ctx.createImageData(w, h); SDL2.w = w; SDL2.h = h; SDL2.imageCtx = SDL2.ctx; } var data = SDL2.image.data; var src = pixels / 4; var dst = 0; var num; if (typeof CanvasPixelArray !== 'undefined' && data instanceof CanvasPixelArray) { num = data.length; while (dst < num) { var val = HEAP32[src]; data[dst ] = val & 0xff; data[dst+1] = (val >> 8) & 0xff; data[dst+2] = (val >> 16) & 0xff; data[dst+3] = 0xff; src++; dst += 4; } } else { if (SDL2.data32Data !== data) { SDL2.data32 = new Int32Array(data.buffer); SDL2.data8 = new Uint8Array(data.buffer); SDL2.data32Data = data; } var data32 = SDL2.data32; num = data32.length; data32.set(HEAP32.subarray(src, src + num)); var data8 = SDL2.data8; var i = 3; var j = i + 4*num; if (num % 8 == 0) { while (i < j) { data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; data8[i] = 0xff; i = i + 4 | 0; } } else { while (i < j) { data8[i] = 0xff; i = i + 4 | 0; } } } SDL2.ctx.putImageData(SDL2.image, 0, 0); },  
+ 1383476: ($0, $1, $2, $3, $4) => { var w = $0; var h = $1; var hot_x = $2; var hot_y = $3; var pixels = $4; var canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h; var ctx = canvas.getContext("2d"); var image = ctx.createImageData(w, h); var data = image.data; var src = pixels / 4; var dst = 0; var num; if (typeof CanvasPixelArray !== 'undefined' && data instanceof CanvasPixelArray) { num = data.length; while (dst < num) { var val = HEAP32[src]; data[dst ] = val & 0xff; data[dst+1] = (val >> 8) & 0xff; data[dst+2] = (val >> 16) & 0xff; data[dst+3] = (val >> 24) & 0xff; src++; dst += 4; } } else { var data32 = new Int32Array(data.buffer); num = data32.length; data32.set(HEAP32.subarray(src, src + num)); } ctx.putImageData(image, 0, 0); var url = hot_x === 0 && hot_y === 0 ? "url(" + canvas.toDataURL() + "), auto" : "url(" + canvas.toDataURL() + ") " + hot_x + " " + hot_y + ", auto"; var urlBuf = _malloc(url.length + 1); stringToUTF8(url, urlBuf, url.length + 1); return urlBuf; },  
+ 1384464: ($0) => { if (Module['canvas']) { Module['canvas'].style['cursor'] = UTF8ToString($0); } },  
+ 1384547: () => { if (Module['canvas']) { Module['canvas'].style['cursor'] = 'none'; } },  
+ 1384616: () => { try { StartedMainLoopCallback(); } catch (err) { console.log('Faild to find StartedMainLoopCallback()'); } }
 };
 
 // Imports from the Wasm binary.
@@ -12213,6 +12193,17 @@ var wasmImports = {
   random_get: _random_get
 };
 
+function invoke_iii(index,a1,a2) {
+  var sp = stackSave();
+  try {
+    return dynCall_iii(index,a1,a2);
+  } catch(e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_vii(index,a1,a2) {
   var sp = stackSave();
   try {
@@ -12228,17 +12219,6 @@ function invoke_vi(index,a1) {
   var sp = stackSave();
   try {
     dynCall_vi(index,a1);
-  } catch(e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_iii(index,a1,a2) {
-  var sp = stackSave();
-  try {
-    return dynCall_iii(index,a1,a2);
   } catch(e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -12413,13 +12393,8 @@ function checkUnflushedContent() {
   try { // it doesn't matter if it fails
     _fflush(0);
     // also flush in the JS FS layer
-    for (var name of ['stdout', 'stderr']) {
-      var info = FS.analyzePath('/dev/' + name);
-      if (!info) return;
-      var stream = info.object;
-      var rdev = stream.rdev;
-      var tty = TTY.ttys[rdev];
-      if (tty?.output?.length) {
+    for (var tty of Object.values(TTY.ttys)) {
+      if (tty.output.length) {
         has = true;
       }
     }
