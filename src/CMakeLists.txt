@@ -44,13 +44,13 @@ if(${SRB2_CONFIG_DEDICATED})
 	set(SRB2_CONFIG_HWRENDER NO)
 endif()
 
-if(${CMAKE_SYSTEM} MATCHES Emscripten)
+if(${CMAKE_SYSTEM} MATCHES "Emscripten")
 	set(SRB2_CONFIG_HWRENDER OFF)
 	set(SRB2_CONFIG_EXECINFO OFF)
 endif()
 
 ### use internal libraries?
-if(${CMAKE_SYSTEM} MATCHES "Windows" OR "Android") ### set on Windows and Android only
+if(${CMAKE_SYSTEM} MATCHES "Windows" OR ${CMAKE_SYSTEM} MATCHES "Android" OR ${CMAKE_SYSTEM} MATCHES "iOS") ### set on Windows, Android, and iOS only
 	set(SRB2_CONFIG_USE_INTERNAL_LIBRARIES OFF CACHE BOOL
 		"Use SRB2's internal copies of required dependencies (SDL2, PNG, zlib, GME, OpenMPT).")
 endif()
@@ -59,6 +59,12 @@ if(${CMAKE_SYSTEM} MATCHES "Android")
 	set(SRB2_CONFIG_USE_INTERNAL_LIBRARIES ON)
 	set(SRB2_CONFIG_HWRENDER OFF)
 	set(SRB2_CONFIG_LTO OFF)
+	set(SRB2_CONFIG_NATIVESCREENRES ON)
+endif()
+
+if(${CMAKE_SYSTEM} MATCHES "iOS")
+	set(SRB2_CONFIG_USE_INTERNAL_LIBRARIES ON)
+	set(SRB2_CONFIG_HWRENDER OFF)
 	set(SRB2_CONFIG_NATIVESCREENRES ON)
 endif()
 
@@ -77,6 +83,9 @@ if(${SRB2_CONFIG_HAVE_GME})
 		elseif(${CMAKE_SYSTEM} MATCHES "Android")
 			set(GME_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/thirdparty/libgme/include)
 			set(GME_LIBRARIES "${CMAKE_SOURCE_DIR}/thirdparty/libgme/libs/${CMAKE_ANDROID_ARCH_ABI}/libgme.so")
+		elseif(${CMAKE_SYSTEM} MATCHES "iOS")
+			set(GME_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/thirdparty/libgme/iOS/include)
+			set(GME_LIBRARIES "${CMAKE_SOURCE_DIR}/thirdparty/libgme/iOS/gme.xcframework")
 		endif()
 	elseif(${CMAKE_SYSTEM} MATCHES "Emscripten")
 		set(GME_FOUND ON)
@@ -106,6 +115,9 @@ if(${SRB2_CONFIG_HAVE_OPENMPT})
 		elseif(${CMAKE_SYSTEM} MATCHES "Android")
 			set(OPENMPT_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/thirdparty/libopenmpt/include)
 			set(OPENMPT_LIBRARIES "${CMAKE_SOURCE_DIR}/thirdparty/libopenmpt/libs/${CMAKE_ANDROID_ARCH_ABI}/libopenmpt.so")
+		elseif(${CMAKE_SYSTEM} MATCHES "iOS")
+			set(OPENMPT_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/thirdparty/libopenmpt/iOS/include)
+			set(OPENMPT_LIBRARIES "${CMAKE_SOURCE_DIR}/thirdparty/libopenmpt/iOS/libopenmpt.xcframework")
 		endif()
 	elseif(${CMAKE_SYSTEM} MATCHES "Emscripten")
 		set(OPENMPT_FOUND ON)
@@ -140,6 +152,9 @@ if(${SRB2_CONFIG_HAVE_ZLIB})
 			endif()
 		elseif(${CMAKE_SYSTEM} MATCHES "Android")
 			set(ZLIB_LIBRARIES "-lz")
+		elseif(${CMAKE_SYSTEM} MATCHES "iOS")
+			# Apple ships zlib as a system library on iOS; no custom build needed.
+			set(ZLIB_LIBRARIES "-lz")
 		endif()
 	elseif(${CMAKE_SYSTEM} MATCHES Emscripten)
 		set(ZLIB_FOUND ON)
@@ -167,6 +182,9 @@ if(${SRB2_CONFIG_HAVE_PNG} AND ${SRB2_CONFIG_HAVE_ZLIB})
 				endif()
 			elseif(${CMAKE_SYSTEM} MATCHES "Android")
 				set(PNG_LIBRARIES libpng::libpng)
+			elseif(${CMAKE_SYSTEM} MATCHES "iOS")
+				set(PNG_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/thirdparty/libpng/iOS/include)
+				set(PNG_LIBRARIES "${CMAKE_SOURCE_DIR}/thirdparty/libpng/iOS/libpng.xcframework")
 			endif()
 		elseif(${CMAKE_SYSTEM} MATCHES Emscripten)
 			set(PNG_FOUND ON)
@@ -235,16 +253,21 @@ if(${SRB2_CONFIG_NATIVESCREENRES})
 	target_compile_definitions(SRB2SDL2 PRIVATE -DNATIVESCREENRES)
 endif()
 
+if(${CMAKE_SYSTEM} MATCHES "iOS")
+	# since C++ libraries are statically linked
+	set_property(TARGET SRB2SDL2 PROPERTY LINKER_LANGUAGE CXX)
+endif()
+
 # Targets
 
 # Compatibility flag with later versions of GCC
 # We should really fix our code to not need this
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-	set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} -mno-ms-bitfields)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mno-ms-bitfields")
 endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT ${CMAKE_SYSTEM} MATCHES "Emscripten")
-	set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} -Wno-absolute-value)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-absolute-value")
 endif()
 
 target_compile_definitions(SRB2SDL2 PRIVATE -DCMAKECONFIG)
@@ -313,7 +336,7 @@ target_compile_definitions(SRB2SDL2 PRIVATE -DDIRECTFULLSCREEN -DHAVE_SDL -DHAVE
 target_compile_options(SRB2SDL2 PRIVATE --use-port=sdl2 --use-port=sdl2_mixer --use-port=zlib --use-port=libpng)
 endif()
 
-if(${CMAKE_SYSTEM} MATCHES "Windows") 
+if(${CMAKE_SYSTEM} MATCHES "Windows")
 	add_subdirectory(win32)
 endif()
 

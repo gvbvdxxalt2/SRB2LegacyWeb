@@ -34,6 +34,7 @@ flatpak/build
 *.flatpak
 .vscode/settings.json
 .ccls-cache/
+.DS_Store
 
 libs/vcpkg/*
 
